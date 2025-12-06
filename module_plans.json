@@ -1,0 +1,378 @@
+{
+  "input": {
+    "user_baseline": "I am a Senior Backend Developer (Node.js/Go) comfortable with Linux command line. I use Docker daily: I can write multi-stage Dockerfiles, optimize image sizes, and use docker-compose for local development. However, I have zero experience with orchestration. Concepts like 'Pods,' 'Ingress,' or 'Helm charts' are abstract to me. I understand basic networking (ports, DNS) but find Kubernetes manifests verbose and confusing.",
+    "user_objective": "My company is migrating our monolithic app to microservices on a cloud provider. My specific goal is to take three of our existing dockerized microservices (Frontend, API, Database) and deploy them into a live Kubernetes cluster. I need to be able to configure them so they can communicate securely (Service Discovery/Secrets), expose the frontend to the public internet (Ingress), and perform a 'Rolling Update' without downtime. I need to be able to debug if a Pod gets stuck in CrashLoopBackOff.",
+    "learning_path_file": "LPgemini.json",
+    "model_provider": "gemini"
+  },
+  "module_plans": [
+    {
+      "module_order": 1,
+      "original_module": {
+        "module_order": 1,
+        "title": "Translating Docker to Kubernetes: Pods and Deployments",
+        "competency_goal": "The learner will be able to define the fundamental K8s resources (Pod, ReplicaSet, Deployment) and use YAML manifests to deploy a single microservice instance.",
+        "mental_map": [
+          "The Pod as the atomic unit (the wrapper around one or more containers, replacing the single Docker container mental model).",
+          "The Deployment resource: Defining the desired state (which image, how many replicas) and managing the Pod lifecycle.",
+          "Basic YAML structure for K8s manifests (apiVersion, kind, metadata, spec).",
+          "Essential `kubectl` commands for deployment and status checking (`apply`, `get`, `describe`)."
+        ],
+        "application": [
+          "Write a basic Deployment manifest for the API microservice, specifying the existing Docker image and a single replica.",
+          "Apply the manifest to a live cluster using `kubectl apply -f api-deployment.yaml`.",
+          "Verify the deployment status and check the running Pod details using `kubectl get pods` and `kubectl describe deployment api`."
+        ],
+        "relevance_to_goal": "This module establishes the foundational mechanism for getting the existing dockerized services onto the cluster, which is the prerequisite for all subsequent steps."
+      },
+      "lesson_plan": {
+        "module_id": 1,
+        "module_context_bridge": "The Kubernetes Pod is the direct conceptual replacement for the single Docker container model, acting as the smallest deployable unit. We are translating your existing Docker knowledge into the K8s resource model.",
+        "lesson_plan": [
+          {
+            "sequence": 1,
+            "topic": "The Anatomy of a K8s Manifest (YAML)",
+            "urac_blueprint": {
+              "understand": "The four mandatory top-level fields of any Kubernetes resource definition: apiVersion, kind, metadata, and spec.",
+              "retain": "The specific names and required indentation level of the four top-level fields.",
+              "apply": "Draft a minimal, valid K8s YAML template containing only the four mandatory top-level fields, using placeholder values (e.g., 'v1', 'Pod', 'my-resource', {}).",
+              "connect": "This structure is the 'verbose' format you found confusing. Mastering these four fields is the key to navigating all future K8s resources."
+            }
+          },
+          {
+            "sequence": 2,
+            "topic": "The Pod: The Atomic Unit of Deployment",
+            "urac_blueprint": {
+              "understand": "The Pod as the atomic unit that wraps one or more containers, sharing network namespace and storage volumes, replacing the single Docker container mental model.",
+              "retain": "The specific path within the Pod's spec that defines the containers array, including the required 'name' and 'image' fields.",
+              "apply": "Using the YAML structure from Lesson 1, define a 'kind: Pod' manifest that specifies the deployment of your existing 'api-service:latest' Docker image.",
+              "connect": "This directly maps your existing knowledge of running a single Docker container (`docker run`) to the K8s environment."
+            }
+          },
+          {
+            "sequence": 3,
+            "topic": "Deployment: Defining Desired State and Lifecycle",
+            "urac_blueprint": {
+              "understand": "The Deployment resource's role in defining the desired state (which image, how many replicas) and managing the lifecycle of underlying ReplicaSets and Pods.",
+              "retain": "The specific field used to define the number of running instances (`spec.replicas`) and the field that holds the Pod definition (`spec.template`).",
+              "apply": "Convert the Pod manifest from Lesson 2 into a 'kind: Deployment' manifest, ensuring the Pod definition is correctly nested under `spec.template` and setting the desired replica count to 1.",
+              "connect": "This resource is the foundation for achieving your objective of performing a 'Rolling Update' without downtime later in the curriculum."
+            }
+          },
+          {
+            "sequence": 4,
+            "topic": "Deploying and Checking Status with kubectl",
+            "urac_blueprint": {
+              "understand": "The core workflow for deploying a resource using `kubectl apply` and verifying its status using `kubectl get` and `kubectl describe`.",
+              "retain": "The specific syntax for applying a file (`kubectl apply -f <file>`) and the command to check the status of the Deployment resource (`kubectl get deployment <name>`).",
+              "apply": "Given the Deployment YAML created in Lesson 3 (named 'api-deployment.yaml'), write the exact sequence of two `kubectl` commands required to deploy it and then verify that the Deployment is ready.",
+              "connect": "This is the immediate, practical step required to achieve the first part of your User Objective: getting the API microservice onto the cluster."
+            }
+          },
+          {
+            "sequence": 5,
+            "topic": "Initial Debugging: Diagnosing CrashLoopBackOff",
+            "urac_blueprint": {
+              "understand": "How to use `kubectl describe pod` and `kubectl logs` to diagnose common initial failure states like image pull errors or application startup failures (often resulting in `CrashLoopBackOff`).",
+              "retain": "The specific command used to view the logs of a failing Pod, which is the primary source of application error information.",
+              "apply": "Given a scenario where a Deployment is stuck and `kubectl get pods` shows a Pod in `CrashLoopBackOff`, write the two specific `kubectl` commands needed to find the root cause (one to inspect the event history, one to view the container output).",
+              "connect": "This directly addresses your stated need to be able to debug if a Pod gets stuck in CrashLoopBackOff, establishing foundational troubleshooting skills."
+            }
+          }
+        ],
+        "acquired_competencies": [
+          "Can define the four mandatory fields of any Kubernetes YAML manifest.",
+          "Can translate a single Docker container concept into a K8s Pod definition.",
+          "Can write a basic Deployment manifest to manage the lifecycle of a single microservice.",
+          "Can use essential `kubectl` commands (`apply`, `get`, `describe`, `logs`) to deploy and debug initial resource states."
+        ]
+      },
+      "acquired_knowledge_at_this_point": [
+        "Can define the four mandatory fields of any Kubernetes YAML manifest.",
+        "Can translate a single Docker container concept into a K8s Pod definition.",
+        "Can write a basic Deployment manifest to manage the lifecycle of a single microservice.",
+        "Can use essential `kubectl` commands (`apply`, `get`, `describe`, `logs`) to deploy and debug initial resource states."
+      ]
+    },
+    {
+      "module_order": 2,
+      "original_module": {
+        "module_order": 2,
+        "title": "Internal Service Discovery and Secure Configuration",
+        "competency_goal": "The learner will be able to use Services for stable internal communication (Service Discovery) and manage sensitive configuration using Secrets.",
+        "mental_map": [
+          "The Service resource: Providing a stable, internal DNS name and IP address for a set of Pods (Service Discovery).",
+          "Service Types: Understanding ClusterIP (internal-only access) as the default for backend communication.",
+          "Selectors: How Services use labels to target the correct Pods managed by a Deployment.",
+          "ConfigMaps and Secrets: Storing non-sensitive and sensitive configuration data, respectively, and injecting them into Pods as environment variables or mounted files."
+        ],
+        "application": [
+          "Create a Deployment and a ClusterIP Service for the Database microservice.",
+          "Create a K8s Secret containing the database credentials.",
+          "Modify the API Deployment manifest to inject the DB credentials from the Secret and the DB hostname (via the ClusterIP Service name) as environment variables.",
+          "Use `kubectl exec` into the API Pod to confirm the environment variables are correctly loaded and attempt a basic connection test to the DB Service name."
+        ],
+        "relevance_to_goal": "This directly addresses the requirement for the services to 'communicate securely (Service Discovery/Secrets)' by establishing stable internal networking and secure configuration injection."
+      },
+      "lesson_plan": {
+        "module_id": 1,
+        "module_context_bridge": "You are familiar with how services in `docker-compose` communicate using the service name as an internal DNS entry. The Kubernetes 'Service' resource serves the exact same purpose: providing a stable, internal network identity for a dynamic group of Pods.",
+        "lesson_plan": [
+          {
+            "sequence": 1,
+            "topic": "The ClusterIP Service for Internal Discovery",
+            "urac_blueprint": {
+              "understand": "The Kubernetes Service resource, specifically the 'ClusterIP' type, as the mechanism for stable internal service discovery.",
+              "retain": "The default behavior: A Service provides a stable DNS name (the service name itself) resolvable only within the cluster, and is the standard for backend-to-backend communication.",
+              "apply": "Write the minimal YAML definition for a Service of type ClusterIP named 'db-service' that exposes port 5432.",
+              "connect": "Relate the stable DNS name provided by the Service to how services communicate using service names in your existing `docker-compose` files."
+            }
+          },
+          {
+            "sequence": 2,
+            "topic": "Linking Services to Pods via Selectors",
+            "urac_blueprint": {
+              "understand": "The role of the 'selector' field in a Service manifest to dynamically map the Service's stable IP/DNS to the correct set of Pods (endpoints).",
+              "retain": "The required label matching convention: Service selector labels must exactly match the Pod template labels defined in the Deployment.",
+              "apply": "Given a Deployment manifest that uses the label 'app: db', write the complete 'selector' block for the 'db-service' Service manifest to ensure correct targeting.",
+              "connect": "Connect this mechanism to the user's need to ensure the API service reliably finds the DB service, even during DB Pod restarts or scaling events."
+            }
+          },
+          {
+            "sequence": 3,
+            "topic": "ConfigMaps vs. Secrets: Defining Configuration Scope",
+            "urac_blueprint": {
+              "understand": "The fundamental difference between ConfigMaps (non-sensitive, general configuration) and Secrets (sensitive data requiring base64 encoding).",
+              "retain": "The rule: ConfigMaps are for configuration data that can be checked into source control; Secrets are for data that must be protected.",
+              "apply": "Create a ConfigMap YAML named 'api-config' containing a key 'MAX_CONNECTIONS' with the integer value '100'.",
+              "connect": "Contrast this external configuration method with hardcoding environment variables directly into your existing Dockerfiles."
+            }
+          },
+          {
+            "sequence": 4,
+            "topic": "Creating and Encoding Secrets",
+            "urac_blueprint": {
+              "understand": "The Secret resource as the mechanism for storing sensitive data and the requirement for base64 encoding.",
+              "retain": "The requirement that sensitive data must be base64 encoded before being placed in the 'data' field of a Secret manifest.",
+              "apply": "Given the plaintext password 'P@ssw0rd123', provide the base64 encoded string and use it to construct a minimal Secret YAML named 'db-credentials' containing the key 'db_password'.",
+              "connect": "Link this to the user's objective of configuring services to 'communicate securely' by managing credentials outside the application image."
+            }
+          },
+          {
+            "sequence": 5,
+            "topic": "Injecting Secrets and ConfigMaps into Pods",
+            "urac_blueprint": {
+              "understand": "The mechanism for injecting data from ConfigMaps and Secrets directly into a Pod's container as environment variables using the 'valueFrom' field.",
+              "retain": "The specific YAML structure required to reference a key within a Secret using 'valueFrom' and 'secretKeyRef'.",
+              "apply": "Modify a provided API Deployment container specification to inject the environment variable 'DB_PASSWORD' by referencing the 'db_password' key from the 'db-credentials' Secret.",
+              "connect": "This synthesizes the previous lessons, showing how the API Pod gets its credentials securely."
+            }
+          },
+          {
+            "sequence": 6,
+            "topic": "Synthesis: Service Discovery and Secure Injection",
+            "urac_blueprint": {
+              "understand": "The complete workflow for establishing secure internal communication: Deployment -> Service -> Secret Injection.",
+              "retain": "The debugging step: Using `kubectl exec` to validate the environment state inside a running Pod.",
+              "apply": "Write the sequence of `kubectl` commands required to: 1) Deploy the DB Service and DB Deployment, 2) Deploy the API Deployment (with injection), and 3) Use `kubectl exec` and `printenv` to confirm the 'DB_HOST' (Service name) and 'DB_PASSWORD' variables are correctly loaded inside the API Pod.",
+              "connect": "This final step directly validates the core competency required for the user's objective: secure, stable internal communication between the API and Database microservices."
+            }
+          }
+        ],
+        "acquired_competencies": [
+          "Can define and deploy a ClusterIP Service for stable internal service discovery.",
+          "Can securely manage sensitive configuration using Kubernetes Secrets.",
+          "Can inject configuration data (Service names and Secrets) into Pods as environment variables."
+        ]
+      },
+      "acquired_knowledge_at_this_point": [
+        "Can define the four mandatory fields of any Kubernetes YAML manifest.",
+        "Can translate a single Docker container concept into a K8s Pod definition.",
+        "Can write a basic Deployment manifest to manage the lifecycle of a single microservice.",
+        "Can use essential `kubectl` commands (`apply`, `get`, `describe`, `logs`) to deploy and debug initial resource states.",
+        "Can define and deploy a ClusterIP Service for stable internal service discovery.",
+        "Can securely manage sensitive configuration using Kubernetes Secrets.",
+        "Can inject configuration data (Service names and Secrets) into Pods as environment variables."
+      ]
+    },
+    {
+      "module_order": 3,
+      "original_module": {
+        "module_order": 3,
+        "title": "External Access and Routing with Ingress",
+        "competency_goal": "The learner will be able to expose the Frontend service to the public internet using a LoadBalancer Service and define an Ingress resource for HTTP routing.",
+        "mental_map": [
+          "Service Types for External Access: LoadBalancer (for simple, direct exposure) vs. NodePort.",
+          "The Ingress resource: Defining rules (hostnames, paths) to route external HTTP/S traffic to internal Services.",
+          "The role of the Ingress Controller (conceptual understanding that it handles the actual routing based on the Ingress resource definition)."
+        ],
+        "application": [
+          "Create a Deployment for the Frontend microservice.",
+          "Define a LoadBalancer Service for the Frontend Deployment to obtain an external IP address.",
+          "Define an Ingress resource that specifies a simple host rule (e.g., `frontend.company.com`) and routes traffic to the Frontend Service on the correct port.",
+          "Verify the external IP/hostname is available and confirm the Frontend is accessible via the Ingress route."
+        ],
+        "relevance_to_goal": "This fulfills the core requirement to 'expose the frontend to the public internet' using the standard K8s mechanism for HTTP routing."
+      },
+      "lesson_plan": {
+        "module_id": "M03_External_Access",
+        "module_context_bridge": "The user is familiar with exposing Docker containers using port mapping (`-p 80:80`) and using reverse proxies (like Nginx) to handle routing based on hostnames. This module translates those familiar concepts into the Kubernetes primitives: LoadBalancer Services for external IP acquisition and Ingress resources for HTTP/S routing rules.",
+        "lesson_plan": [
+          {
+            "sequence": 1,
+            "topic": "Service Type: LoadBalancer for Public Exposure",
+            "urac_blueprint": {
+              "understand": "The function of the `LoadBalancer` Service type in provisioning a cloud-managed external IP address and distributing traffic across Pods.",
+              "retain": "The specific field `type: LoadBalancer` and the fact that this type is typically only available on cloud providers (AWS, GCP, Azure).",
+              "apply": "Write a complete Kubernetes Service manifest that targets a Deployment named `frontend-app` on port 80 and explicitly defines the `LoadBalancer` type.",
+              "connect": "Connect the resulting external IP address obtained by the LoadBalancer Service to the user's prior need for a stable, public IP address for their web server."
+            }
+          },
+          {
+            "sequence": 2,
+            "topic": "Conceptual Role of the Ingress Controller",
+            "urac_blueprint": {
+              "understand": "The conceptual separation between the declarative Ingress *Resource* (the YAML definition of rules) and the operational Ingress *Controller* (the actual component, like Nginx or Traefik, that enforces those rules).",
+              "retain": "The critical dependency: An Ingress resource is inert without a running Ingress Controller in the cluster.",
+              "apply": "Given the scenario: 'A LoadBalancer Service is running, and an Ingress resource is deployed, but the traffic is not routing based on the hostname.' Identify the single most likely missing component that prevents the routing from working.",
+              "connect": "Link the Ingress Controller to the user's experience with configuring and running a dedicated reverse proxy (like Nginx) outside of Kubernetes to handle routing based on configuration files."
+            }
+          },
+          {
+            "sequence": 3,
+            "topic": "Ingress Resource Boilerplate and API Version",
+            "urac_blueprint": {
+              "understand": "The mandatory fields and correct API version for defining an Ingress resource.",
+              "retain": "The specific `apiVersion` for modern Ingress resources: `networking.k8s.io/v1` and the `kind: Ingress`.",
+              "apply": "Write the minimal YAML boilerplate (apiVersion, kind, metadata) for an Ingress resource named `frontend-ingress` that will eventually handle external traffic.",
+              "connect": "Anchor this new resource type to the user's existing knowledge of K8s manifests (Deployment, Service) by noting the consistent structure (metadata, spec) required for all K8s objects."
+            }
+          },
+          {
+            "sequence": 4,
+            "topic": "Defining Host-Based Routing Rules",
+            "urac_blueprint": {
+              "understand": "How to define host-based routing rules (`spec.rules`) within the Ingress resource to direct traffic based on the requested hostname.",
+              "retain": "The required structure for a rule: `host`, `http`, `paths`, `pathType`, and the specific reference to the `backend.service.name` and `backend.service.port.number`.",
+              "apply": "Complete the `spec` section of the `frontend-ingress` manifest to route all traffic for the host `frontend.company.com` (using `pathType: Prefix` on `/`) to the existing `frontend-app` Service on port 80.",
+              "connect": "This task directly fulfills the User Objective requirement to 'expose the frontend to the public internet' using the standard K8s mechanism for HTTP routing."
+            }
+          }
+        ],
+        "acquired_competencies": [
+          "Can define and deploy a LoadBalancer Service to obtain a public, stable IP address for a microservice.",
+          "Understands the conceptual role of the Ingress Controller as the operational component that enforces routing rules.",
+          "Can write a complete Ingress resource manifest that defines host-based routing rules to direct external traffic to an internal Service."
+        ]
+      },
+      "acquired_knowledge_at_this_point": [
+        "Can define the four mandatory fields of any Kubernetes YAML manifest.",
+        "Can translate a single Docker container concept into a K8s Pod definition.",
+        "Can write a basic Deployment manifest to manage the lifecycle of a single microservice.",
+        "Can use essential `kubectl` commands (`apply`, `get`, `describe`, `logs`) to deploy and debug initial resource states.",
+        "Can define and deploy a ClusterIP Service for stable internal service discovery.",
+        "Can securely manage sensitive configuration using Kubernetes Secrets.",
+        "Can inject configuration data (Service names and Secrets) into Pods as environment variables.",
+        "Can define and deploy a LoadBalancer Service to obtain a public, stable IP address for a microservice.",
+        "Understands the conceptual role of the Ingress Controller as the operational component that enforces routing rules.",
+        "Can write a complete Ingress resource manifest that defines host-based routing rules to direct external traffic to an internal Service."
+      ]
+    },
+    {
+      "module_order": 4,
+      "original_module": {
+        "module_order": 4,
+        "title": "Operational Readiness, Rolling Updates, and Debugging",
+        "competency_goal": "The learner will be able to configure Deployments for zero-downtime updates and efficiently diagnose common operational failures like CrashLoopBackOff.",
+        "mental_map": [
+          "Deployment Strategy: Understanding the default `RollingUpdate` mechanism and how it ensures availability during updates.",
+          "Readiness and Liveness Probes: Defining health checks to signal when a Pod is ready to receive traffic (Readiness) and when it needs to be restarted (Liveness).",
+          "The K8s Debugging Flow: Using `kubectl logs`, `kubectl describe pod`, and `kubectl get events` to trace the lifecycle and failure points of a Pod."
+        ],
+        "application": [
+          "Modify the API Deployment to include basic HTTP readiness and liveness probes.",
+          "Perform a simulated version upgrade (e.g., changing the image tag) on the API Deployment using `kubectl set image` and observe the rolling update process to confirm zero downtime.",
+          "Intentionally introduce a configuration error (e.g., a bad environment variable) into a new Pod definition, observe the resulting `CrashLoopBackOff` status.",
+          "Use the K8s debugging flow (`kubectl describe pod`, `kubectl logs`) to identify the root cause of the simulated `CrashLoopBackOff`."
+        ],
+        "relevance_to_goal": "This module directly addresses the final operational requirements: 'perform a 'Rolling Update' without downtime' and 'debug if a Pod gets stuck in CrashLoopBackOff'."
+      },
+      "lesson_plan": {
+        "module_id": 4,
+        "module_context_bridge": "The user is comfortable managing single container lifecycles via Docker. This module bridges the concept of simple container restarts (Docker's `restart: always`) to Kubernetes' sophisticated, application-aware lifecycle management (Rolling Updates and Probes) to achieve zero-downtime and self-healing.",
+        "lesson_plan": [
+          {
+            "sequence": 1,
+            "topic": "Deployment Strategy: Rolling Update Parameters",
+            "urac_blueprint": {
+              "understand": "The default `RollingUpdate` strategy and the role of `maxSurge` and `maxUnavailable` in controlling the update speed and availability guarantee.",
+              "retain": "The meaning of `maxUnavailable: 0` (guaranteeing no downtime) and `maxSurge: 1` (controlling resource usage during the update).",
+              "apply": "Write the YAML snippet for the `spec.strategy` block of a Deployment that explicitly enforces a zero-downtime update by ensuring at least 100% of old Pods remain available until the new ones are ready, while only creating one extra Pod at a time.",
+              "connect": "Link this configuration directly to the user's objective of performing a 'Rolling Update without downtime' by defining the mechanism that prevents service interruption."
+            }
+          },
+          {
+            "sequence": 2,
+            "topic": "Readiness Probes: Traffic Routing Control",
+            "urac_blueprint": {
+              "understand": "The function of the Readiness Probe: signaling to the Service/Ingress when a Pod is ready to accept user traffic, preventing premature routing.",
+              "retain": "The critical distinction: Readiness controls *traffic routing*; Liveness controls *Pod lifecycle* (restarts).",
+              "apply": "Given the API service runs on port 8080 and exposes a `/healthz` endpoint, write the complete YAML snippet for a `readinessProbe` using `httpGet` that checks this endpoint.",
+              "connect": "Connect this probe to the `maxUnavailable: 0` setting from the previous lesson, explaining that the Deployment waits for this probe to succeed before terminating old Pods."
+            }
+          },
+          {
+            "sequence": 3,
+            "topic": "Liveness Probes: Self-Healing and Restarts",
+            "urac_blueprint": {
+              "understand": "The function of the Liveness Probe: signaling to the Kubelet that a container is unhealthy (e.g., deadlocked or memory leak) and must be restarted.",
+              "retain": "The key parameters for tuning restart behavior: `initialDelaySeconds` (wait before first check) and `failureThreshold` (number of failures before restart).",
+              "apply": "Write the complete YAML snippet for a `livenessProbe` using `httpGet` on the same `/healthz` endpoint, configured to wait 15 seconds before the first check and restart after 3 consecutive failures.",
+              "connect": "Contrast this with the user's existing knowledge of Docker's simple `restart: always`, highlighting how K8s provides application-aware self-healing based on the application's internal state."
+            }
+          },
+          {
+            "sequence": 4,
+            "topic": "The K8s Debugging Flow: Status to Root Cause",
+            "urac_blueprint": {
+              "understand": "The structured, three-step sequence of `kubectl` commands required to diagnose a failing Pod, moving from high-level status to application output.",
+              "retain": "The purpose of the three primary diagnostic commands: `kubectl get events` (cluster history), `kubectl describe pod` (Pod configuration/state), `kubectl logs` (application output).",
+              "apply": "Given a Pod named `api-deployment-xyz` stuck in `CrashLoopBackOff`, construct the exact sequence of three `kubectl` commands (with necessary arguments) required to find the root cause, starting with the most general command.",
+              "connect": "This flow directly addresses the user's objective: 'debug if a Pod gets stuck in CrashLoopBackOff' by providing the necessary operational toolkit."
+            }
+          },
+          {
+            "sequence": 5,
+            "topic": "Diagnosing CrashLoopBackOff (Application)",
+            "urac_blueprint": {
+              "understand": "The common causes of `CrashLoopBackOff` (e.g., bad command, missing environment variable, failed startup script) and how to interpret the output of the debugging flow.",
+              "retain": "The specific failure pattern: `CrashLoopBackOff` means the container started successfully but exited immediately with a non-zero code.",
+              "apply": "Analyze a provided (simulated) output from `kubectl logs api-deployment-xyz` that shows the error 'FATAL: Database connection failed: Host not found.' State the single, specific configuration change (e.g., modifying a Secret, changing an environment variable name, or fixing a typo in the Deployment) needed to resolve the issue.",
+              "connect": "Validate the user's ability to execute the full debugging loop, linking the abstract concept of `CrashLoopBackOff` to a concrete, fixable configuration error in their microservice deployment."
+            }
+          }
+        ],
+        "acquired_competencies": [
+          "Can configure a Deployment for zero-downtime updates using `maxSurge` and `maxUnavailable`.",
+          "Can define application-aware health checks using Liveness and Readiness Probes.",
+          "Can efficiently diagnose and resolve common operational failures like `CrashLoopBackOff` using the standard K8s debugging flow."
+        ]
+      },
+      "acquired_knowledge_at_this_point": [
+        "Can define the four mandatory fields of any Kubernetes YAML manifest.",
+        "Can translate a single Docker container concept into a K8s Pod definition.",
+        "Can write a basic Deployment manifest to manage the lifecycle of a single microservice.",
+        "Can use essential `kubectl` commands (`apply`, `get`, `describe`, `logs`) to deploy and debug initial resource states.",
+        "Can define and deploy a ClusterIP Service for stable internal service discovery.",
+        "Can securely manage sensitive configuration using Kubernetes Secrets.",
+        "Can inject configuration data (Service names and Secrets) into Pods as environment variables.",
+        "Can define and deploy a LoadBalancer Service to obtain a public, stable IP address for a microservice.",
+        "Understands the conceptual role of the Ingress Controller as the operational component that enforces routing rules.",
+        "Can write a complete Ingress resource manifest that defines host-based routing rules to direct external traffic to an internal Service.",
+        "Can configure a Deployment for zero-downtime updates using `maxSurge` and `maxUnavailable`.",
+        "Can define application-aware health checks using Liveness and Readiness Probes.",
+        "Can efficiently diagnose and resolve common operational failures like `CrashLoopBackOff` using the standard K8s debugging flow."
+      ]
+    }
+  ]
+}
