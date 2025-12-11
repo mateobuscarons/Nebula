@@ -4,6 +4,7 @@ import { api } from './services/api';
 import SetupPage from './pages/SetupPage';
 import PathApprovalPage from './pages/PathApprovalPage';
 import Dashboard from './pages/Dashboard';
+import LessonPage from './pages/LessonPage';
 import './App.css';
 
 function App() {
@@ -69,6 +70,10 @@ function App() {
         <Route
           path="/dashboard"
           element={<Dashboard sessionState={sessionState} onRefresh={refreshSession} />}
+        />
+        <Route
+          path="/lesson/:moduleNumber/:challengeNumber"
+          element={<LessonPage onComplete={refreshSession} />}
         />
       </Routes>
     </BrowserRouter>

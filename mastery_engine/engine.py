@@ -44,6 +44,9 @@ class MasteryEngine:
         self.current_lesson_idx = 0
         self.conversation_history = []  # Resets for each new lesson
 
+        # Directly loaded acquired knowledge (for API integration)
+        self._direct_acquired_knowledge = None
+
         # Metrics
         self.last_response_time = 0
         self.last_token_usage = {}
@@ -78,6 +81,62 @@ class MasteryEngine:
         )
         print(f"✅ Total lessons: {total_lessons}\n")
 
+    def load_lesson_from_data(
+        self,
+        user_baseline: str,
+        user_objective: str,
+        module_data: Dict[str, Any],
+        lesson_index: int,
+        acquired_knowledge: List[str]
+    ):
+        """
+        Load a single lesson from database data (for API integration).
+
+        This method allows the engine to be initialized with lesson data
+        directly from the database, without loading from a file.
+
+        Args:
+            user_baseline: What the user already knows
+            user_objective: What the user wants to achieve
+            module_data: Module challenges data from DB (includes lesson_plan, module, etc.)
+            lesson_index: 0-indexed lesson number within the module
+            acquired_knowledge: List of competencies already acquired
+        """
+        self.user_baseline = user_baseline
+        self.user_objective = user_objective
+
+        # Build a module_plans structure compatible with existing methods
+        # The module_data from DB has: module, lesson_plan, acquired_competencies, etc.
+        module_info = module_data.get("module", {})
+
+        self.module_plans = [{
+            "module_order": 1,
+            "original_module": module_info,
+            "lesson_plan": {
+                "module_id": module_data.get("module_id", 1),
+                "module_context_bridge": module_data.get("module_context_bridge", ""),
+                "lesson_plan": module_data.get("lesson_plan", []),
+                "acquired_competencies": module_data.get("acquired_competencies", [])
+            },
+            "acquired_knowledge_at_this_point": acquired_knowledge
+        }]
+
+        # Set the current lesson index
+        self.current_module_idx = 0
+        self.current_lesson_idx = lesson_index
+
+        # Store directly loaded acquired knowledge
+        self._direct_acquired_knowledge = acquired_knowledge
+
+        # Reset conversation history
+        self.conversation_history = []
+
+        lesson = self.get_current_lesson()
+        if lesson:
+            print(f"✅ Loaded lesson: {lesson.get('topic', 'Unknown')}")
+        else:
+            print(f"⚠️ Could not find lesson at index {lesson_index}")
+
     def get_current_lesson(self) -> Optional[Dict]:
         """Get the current lesson data."""
         if not self.module_plans:
@@ -108,9 +167,15 @@ class MasteryEngine:
         1. All knowledge from previous modules
         2. Knowledge from lessons completed before the current one in the current module
 
+        When using load_lesson_from_data(), the acquired knowledge is directly provided.
+
         Returns:
             List of acquired knowledge strings
         """
+        # If directly loaded via API, use the provided acquired knowledge
+        if self._direct_acquired_knowledge is not None:
+            return self._direct_acquired_knowledge
+
         if not self.module_plans:
             return []
 
@@ -281,7 +346,36 @@ class MasteryEngine:
 
             # Validate that we got a dict, not a string
             if not isinstance(response_json, dict):
+                print(f"   ❌ Invalid response type: {type(response_json).__name__}")
                 raise ValueError(f"JSON extraction returned {type(response_json).__name__} instead of dict. Content: {str(response_json)[:200]}")
+
+            # Print clean, formatted response
+            print(f"\n{'='*80}")
+            print(f"🤖 GEMINI RESPONSE")
+            print(f"{'='*80}")
+
+            print(f"\n💭 THOUGHT PROCESS:")
+            print(f"{response_json.get('thought_process', 'N/A')}")
+
+            print(f"\n💬 CONVERSATION CONTENT:")
+            print(f"{response_json.get('conversation_content', 'N/A')}")
+
+            print(f"\n📝 EDITOR CONTENT:")
+            editor = response_json.get('editor_content')
+            if editor:
+                print(f"   Type: {editor.get('type', 'N/A')}")
+                print(f"   Language: {editor.get('language', 'N/A')}")
+                print(f"   Content:")
+                print(f"{editor.get('content', 'N/A')}")
+            else:
+                print(f"   (None)")
+
+            print(f"\n📊 LESSON STATUS:")
+            lesson_status = response_json.get('lesson_status', {})
+            print(f"   Phase: {lesson_status.get('current_phase', 'N/A')}")
+            print(f"   Waiting for user: {lesson_status.get('is_waiting_for_user_action', 'N/A')}")
+
+            print(f"\n{'='*80}\n")
 
             # Add assistant response to conversation history
             self.conversation_history.append({
@@ -293,6 +387,8 @@ class MasteryEngine:
 
         except Exception as e:
             print(f"❌ Error generating response: {e}")
+            import traceback
+            traceback.print_exc()
             raise e
 
     def _build_system_prompt(self, lesson: Dict, module: Dict) -> str:
@@ -311,6 +407,17 @@ class MasteryEngine:
 
         acquired_knowledge_list = self.get_acquired_knowledge()
         acquired_knowledge_str = "\n".join([f"  • {k}" for k in acquired_knowledge_list]) if acquired_knowledge_list else "  (None - this is the first lesson)"
+
+        print(f"\n📚 Acquired Knowledge being sent to Gemini:")
+        print(f"   Count: {len(acquired_knowledge_list)} items")
+        if acquired_knowledge_list:
+            for i, knowledge in enumerate(acquired_knowledge_list[:3], 1):
+                preview = knowledge[:80] + "..." if len(knowledge) > 80 else knowledge
+                print(f"   {i}. {preview}")
+            if len(acquired_knowledge_list) > 3:
+                print(f"   ... and {len(acquired_knowledge_list) - 3} more")
+        else:
+            print(f"   ℹ️  No acquired knowledge (first lesson)")
 
         system_prompt = f"""You are an Expert Mentor executing an interactive micro-lesson using the URAC (Understand, Retain, Apply, Connect) framework.
 
@@ -349,19 +456,24 @@ You will execute this lesson following the URAC framework. The blueprint below d
 1. **Understand:** {urac.get("understand", "")}
 
    Your task: Teach this concept clearly.
-   - Connect to the learner's baseline knowledge
+   - **CRITICAL: Bridge from acquired knowledge** - Start by connecting this new concept to what they learned in previous lessons (see Acquired Knowledge section above)
+   - Reference their objective or background in case no acquired knowledge exists
    - Use comparisons, analogies, or contrasts
    - Provide examples that clarify boundaries
 
 2. **Retain:** {urac.get("retain", "")}
 
-   Your task: Ask this analytical question after teaching.
-   - The question is already designed - present it to the learner
-   - This is Phase A (TEACHING) - stay in this phase until they answer correctly
-   - Do NOT present the Apply task in the same turn as the Retain question
-   - Do NOT move to Application until they demonstrate understanding
-   - If they answer incorrectly, guide their thinking with follow-up questions
+   Your task: Ask this analytical question naturally after teaching.
+   - Present the question conversationally - do NOT label it as "retain question" or "let's test your understanding"
+   - Just ask the question directly as part of your teaching flow
+   - Stay in TEACHING phase until they answer correctly
+   - If incorrect, guide their thinking with follow-up questions
    - Keep current_phase: "TEACHING"
+
+   **NO SCAFFOLDING:**
+   - Set editor_content to null
+   - No templates, structures, or hints
+   - They answer from memory in their own words
 
 3. **Apply:** {urac.get("apply", "")}
 
@@ -463,16 +575,22 @@ You will execute this lesson following the URAC framework. The blueprint below d
 {{
   "thought_process": "Your internal reasoning about the learner's current understanding, what phase you're in, and what you're trying to achieve in this response.",
   "conversation_content": "The text displayed in the Chat UI. This is your teaching content, questions, feedback, or task instructions. Write directly to the learner.",
-  "editor_content": {{
-    "type": "code | text",
-    "language": "yaml | python | markdown | javascript | etc",
-    "content": "The code snippet, template, or starter content to display in the Editor UI. Use null if no editor update is needed this turn."
+  "editor_content": null OR {{
+    "type": "code OR text",
+    "language": "yaml | python | javascript | bash | markdown | etc",
+    "content": "Code scaffolding or text template"
   }},
   "lesson_status": {{
     "current_phase": "TEACHING | APPLICATION | CONNECT | COMPLETED",
     "is_waiting_for_user_action": true
   }}
 }}
+
+**CRITICAL: editor_content type selection**
+- Use null when: TEACHING phase (including questions), CONNECT phase, or when learner types freely
+- Use "type": "code" when: Task requires writing code (YAML, Python, JavaScript, etc.)
+- Use "type": "text" when: Task requires writing text/explanations but you want to provide a template
+- Never use "type": "code" for pure text questions or explanations
 
 **Phase Transition Rules:**
 - Start in "TEACHING" phase
@@ -484,7 +602,8 @@ You will execute this lesson following the URAC framework. The blueprint below d
 
 **Output Guidelines:**
 
-- **editor_content:** In APPLICATION phase, provide what requires low cognitive effort but is time-consuming. Require the learner to do what requires high cognitive effort. Should NOT be copy-pasteable.
+- **editor_content in TEACHING phase:** Set to null when asking Retain questions. No scaffolding, templates, or hints. The learner answers in their own words.
+- **editor_content in APPLICATION phase:** Provide what requires low cognitive effort but is time-consuming. Require the learner to do what requires high cognitive effort. Should NOT be copy-pasteable.
 - **conversation_content:** Be concise, clear, and Socratic when remediating
 - Use appropriate content type for the lesson
 

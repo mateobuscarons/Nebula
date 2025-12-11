@@ -414,9 +414,10 @@ class Database:
             user_id: User ID
 
         Returns:
-            Progress summary with counts by module and status
+            Progress summary with counts by module, individual challenge status, and totals
         """
         with self._get_connection() as conn:
+            # Get summary counts per module
             summary = conn.execute(
                 """SELECT
                        module_number,
@@ -431,8 +432,39 @@ class Database:
                 (user_id,)
             ).fetchall()
 
+            # Get individual challenge details
+            all_progress = conn.execute(
+                """SELECT module_number, challenge_number, status
+                   FROM challenge_progress
+                   WHERE user_id = ?
+                   ORDER BY module_number, challenge_number""",
+                (user_id,)
+            ).fetchall()
+
+            # Build challenge_details lookup by module
+            challenge_details_by_module = {}
+            for row in all_progress:
+                module_num = row['module_number']
+                challenge_num = row['challenge_number']
+                if module_num not in challenge_details_by_module:
+                    challenge_details_by_module[module_num] = {}
+                challenge_details_by_module[module_num][challenge_num] = {
+                    'status': row['status']
+                }
+
+            # Build modules list with challenge_details
+            modules = []
+            for row in summary:
+                module_data = dict(row)
+                module_data['challenge_details'] = challenge_details_by_module.get(row['module_number'], {})
+                modules.append(module_data)
+
+            total_completed = sum(row['completed'] for row in summary)
+            total_challenges = sum(row['total'] for row in summary)
+
             return {
-                'modules': [dict(row) for row in summary],
-                'total_completed': sum(row['completed'] for row in summary),
-                'total_challenges': sum(row['total'] for row in summary)
+                'modules': modules,
+                'total_completed': total_completed,
+                'total_challenges': total_challenges,
+                'completion_percentage': round((total_completed / total_challenges * 100) if total_challenges > 0 else 0, 1)
             }

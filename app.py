@@ -13,6 +13,7 @@ from agents.learning_path import LearningPathAgent
 from agents.module_planner import ModulePlannerAgent
 
 from database.db_operations import Database
+from mastery_engine.engine import MasteryEngine
 
 app = FastAPI(
     title="Adaptive Learning OS API",
@@ -29,6 +30,9 @@ app.add_middleware(
 )
 
 db = Database(db_path="learning_system.db")
+
+# In-memory storage for active lesson sessions (single-user MVP)
+active_lessons: Dict[tuple, MasteryEngine] = {}
 
 
 class SetupRequest(BaseModel):
@@ -50,11 +54,32 @@ class PathAdjustmentRequest(BaseModel):
 
 class SessionResponse(BaseModel):
     """Session state response"""
-    state: str 
+    state: str
     user_profile: Optional[Dict[str, Any]] = None
     learning_path: Optional[Dict[str, Any]] = None
     current_challenge: Optional[Dict[str, Any]] = None
     progress_summary: Optional[Dict[str, Any]] = None
+
+
+class LessonStartRequest(BaseModel):
+    """Request to start a lesson"""
+    module_number: int
+    challenge_number: int
+
+
+class LessonRespondRequest(BaseModel):
+    """Request to respond to a lesson"""
+    module_number: int
+    challenge_number: int
+    user_input: str
+
+
+class LessonResponse(BaseModel):
+    """Response from lesson interaction"""
+    conversation_content: str
+    editor_content: Optional[Dict[str, Any]] = None
+    lesson_status: Dict[str, Any]
+    lesson_info: Optional[Dict[str, Any]] = None
 
 @app.get("/")
 def root():
@@ -449,21 +474,264 @@ def reset_system():
     try:
         import os
         db_path = "learning_system.db"
-        
+
         if os.path.exists(db_path):
             os.remove(db_path)
             print("🗑️  Deleted learning_system.db")
-        
+
         # Reinitialize database
         global db
         db = Database(db_path=db_path)
-        
+
+        # Clear active lessons
+        global active_lessons
+        active_lessons = {}
+
         print("✅ System reset complete")
         return {"success": True, "message": "System reset successfully"}
-    
+
     except Exception as e:
         print(f"❌ Reset failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
+
+
+# ============================================================
+# LESSON ENDPOINTS (Mastery Engine Integration)
+# ============================================================
+
+@app.post("/lesson/start", response_model=LessonResponse)
+def start_lesson(request: LessonStartRequest):
+    """
+    Start an interactive lesson using the Mastery Engine.
+
+    Process:
+        1. Validate user and sequential access
+        2. Load lesson data from module_challenges
+        3. Initialize MasteryEngine with lesson data
+        4. Mark challenge as in_progress
+        5. Get initial AI response
+
+    Returns:
+        LessonResponse with conversation_content, editor_content, lesson_status
+    """
+    try:
+        user = db.get_first_user_profile()
+        if not user:
+            raise HTTPException(status_code=404, detail="No user profile found")
+
+        user_id = user["id"]
+        module_num = request.module_number
+        challenge_num = request.challenge_number
+
+        print(f"\n🎓 Starting lesson: Module {module_num}, Challenge {challenge_num}")
+
+        # Validate sequential access
+        if challenge_num > 1:
+            prev_progress = db.get_challenge_progress(user_id, module_num, challenge_num - 1)
+            if not prev_progress or prev_progress["status"] != "completed":
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Must complete challenge {challenge_num - 1} first"
+                )
+
+        # Check if challenge is already completed
+        current_progress = db.get_challenge_progress(user_id, module_num, challenge_num)
+        if current_progress and current_progress["status"] == "completed":
+            raise HTTPException(
+                status_code=403,
+                detail="This lesson has already been completed"
+            )
+
+        # Load module challenges from DB
+        module_challenges = db.get_module_challenges(user_id, module_num)
+        if not module_challenges:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Module {module_num} challenges not found"
+            )
+
+        # Get the specific lesson from the lesson_plan
+        lesson_plan = module_challenges.get("lesson_plan", [])
+        lesson_data = None
+        for lesson in lesson_plan:
+            if lesson.get("sequence") == challenge_num:
+                lesson_data = lesson
+                break
+
+        if not lesson_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Challenge {challenge_num} not found in module {module_num}"
+            )
+
+        # Get user context from learning path
+        learning_path = db.get_learning_path(user_id)
+        user_baseline = learning_path.get("input", {}).get("user_baseline", "") if learning_path else ""
+        user_objective = learning_path.get("input", {}).get("user_objective", "") if learning_path else ""
+
+        # Build acquired knowledge from previous modules/challenges
+        acquired_knowledge = []
+
+        print(f"\n📚 Building Acquired Knowledge...")
+        print(f"   Current: Module {module_num}, Challenge {challenge_num}")
+
+        # Add knowledge from previous modules
+        all_module_challenges = db.get_all_module_challenges(user_id)
+        print(f"   Total modules in DB: {len(all_module_challenges)}")
+
+        for mc in all_module_challenges:
+            mc_num = mc["module_number"]
+            mc_competencies = mc.get("acquired_competencies", [])
+            print(f"   Module {mc_num}: {len(mc_competencies)} competencies available")
+
+            if mc_num < module_num:
+                # Add all competencies from previous modules
+                acquired_knowledge.extend(mc_competencies)
+                print(f"      ✅ Added all {len(mc_competencies)} competencies (previous module)")
+            elif mc_num == module_num:
+                # Add knowledge from previous challenges in current module
+                competencies_to_add = min(challenge_num - 1, len(mc_competencies))
+                if competencies_to_add > 0:
+                    for i in range(competencies_to_add):
+                        acquired_knowledge.append(mc_competencies[i])
+                    print(f"      ✅ Added {competencies_to_add} competencies (previous challenges in current module)")
+                else:
+                    print(f"      ⏭️  No previous challenges to add (first challenge)")
+
+        print(f"\n   📋 Total Acquired Knowledge: {len(acquired_knowledge)} items")
+        if acquired_knowledge:
+            print(f"   📝 Acquired knowledge preview:")
+            for i, knowledge in enumerate(acquired_knowledge[:3], 1):
+                preview = knowledge[:80] + "..." if len(knowledge) > 80 else knowledge
+                print(f"      {i}. {preview}")
+            if len(acquired_knowledge) > 3:
+                print(f"      ... and {len(acquired_knowledge) - 3} more")
+        else:
+            print(f"   ℹ️  No acquired knowledge (first lesson)")
+
+        # Initialize MasteryEngine
+        engine = MasteryEngine()
+        engine.load_lesson_from_data(
+            user_baseline=user_baseline,
+            user_objective=user_objective,
+            module_data=module_challenges,
+            lesson_index=challenge_num - 1,  # 0-indexed
+            acquired_knowledge=acquired_knowledge
+        )
+
+        # Store in active lessons
+        session_key = (user_id, module_num, challenge_num)
+        active_lessons[session_key] = engine
+
+        # Mark challenge as in_progress
+        db.update_challenge_status(user_id, module_num, challenge_num, "in_progress")
+
+        # Get initial AI response
+        response = engine.start_lesson()
+
+        print(f"   ✅ Lesson started, phase: {response.get('lesson_status', {}).get('current_phase', 'UNKNOWN')}")
+
+        return LessonResponse(
+            conversation_content=response.get("conversation_content", ""),
+            editor_content=response.get("editor_content"),
+            lesson_status=response.get("lesson_status", {}),
+            lesson_info={
+                "module_number": module_num,
+                "challenge_number": challenge_num,
+                "topic": lesson_data.get("topic", ""),
+                "module_title": module_challenges.get("module", {}).get("title", f"Module {module_num}")
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Failed to start lesson: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to start lesson: {str(e)}")
+
+
+@app.post("/lesson/respond", response_model=LessonResponse)
+def respond_to_lesson(request: LessonRespondRequest):
+    """
+    Process user response in an active lesson.
+
+    Process:
+        1. Get active MasteryEngine instance
+        2. Process user input
+        3. If completed, mark challenge as completed
+        4. Return AI response
+
+    Returns:
+        LessonResponse with conversation_content, editor_content, lesson_status
+    """
+    try:
+        user = db.get_first_user_profile()
+        if not user:
+            raise HTTPException(status_code=404, detail="No user profile found")
+
+        user_id = user["id"]
+        module_num = request.module_number
+        challenge_num = request.challenge_number
+        user_input = request.user_input
+
+        print(f"\n📝 Processing response: Module {module_num}, Challenge {challenge_num}")
+        print(f"   User input: {user_input[:100]}..." if len(user_input) > 100 else f"   User input: {user_input}")
+
+        # Get active lesson engine
+        session_key = (user_id, module_num, challenge_num)
+        engine = active_lessons.get(session_key)
+
+        if not engine:
+            raise HTTPException(
+                status_code=404,
+                detail="No active lesson found. Please start the lesson first."
+            )
+
+        # Process user input
+        response = engine.process_user_input(user_input)
+
+        # Check if lesson is completed
+        lesson_status = response.get("lesson_status", {})
+        current_phase = lesson_status.get("current_phase", "")
+
+        if current_phase == "COMPLETED":
+            print(f"   🎉 Lesson completed!")
+            db.complete_challenge(user_id, module_num, challenge_num)
+            # Clean up active lesson
+            del active_lessons[session_key]
+
+        print(f"   ✅ Response processed, phase: {current_phase}")
+
+        # Get lesson info for response
+        module_challenges = db.get_module_challenges(user_id, module_num)
+        lesson_plan = module_challenges.get("lesson_plan", []) if module_challenges else []
+        lesson_data = None
+        for lesson in lesson_plan:
+            if lesson.get("sequence") == challenge_num:
+                lesson_data = lesson
+                break
+
+        return LessonResponse(
+            conversation_content=response.get("conversation_content", ""),
+            editor_content=response.get("editor_content"),
+            lesson_status=lesson_status,
+            lesson_info={
+                "module_number": module_num,
+                "challenge_number": challenge_num,
+                "topic": lesson_data.get("topic", "") if lesson_data else "",
+                "module_title": module_challenges.get("module", {}).get("title", f"Module {module_num}") if module_challenges else f"Module {module_num}"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Failed to process response: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to process response: {str(e)}")
 
 
 if __name__ == "__main__":

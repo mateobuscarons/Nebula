@@ -86,4 +86,27 @@ export const api = {
   async reset() {
     return apiCall('/reset', { method: 'DELETE' });
   },
+
+  // Start a lesson (Mastery Engine)
+  async startLesson(moduleNumber, challengeNumber) {
+    return apiCall('/lesson/start', {
+      method: 'POST',
+      body: JSON.stringify({
+        module_number: moduleNumber,
+        challenge_number: challengeNumber,
+      }),
+    });
+  },
+
+  // Respond to a lesson (Mastery Engine)
+  async respondToLesson(moduleNumber, challengeNumber, userInput) {
+    return apiCall('/lesson/respond', {
+      method: 'POST',
+      body: JSON.stringify({
+        module_number: moduleNumber,
+        challenge_number: challengeNumber,
+        user_input: userInput,
+      }),
+    });
+  },
 };

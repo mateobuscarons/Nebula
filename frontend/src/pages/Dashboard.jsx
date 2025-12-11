@@ -424,6 +424,13 @@ function Dashboard({ sessionState, onRefresh }) {
                       const isExpanded = expandedChallenge === challengeKey;
                       const urac = challengeInfo?.urac_blueprint || {};
 
+                      // Sequential access logic: first challenge always accessible,
+                      // subsequent challenges require previous to be completed
+                      const prevChallengeDetail = challengeNum > 1 ? module.challenge_details?.[challengeNum - 1] : null;
+                      const prevCompleted = challengeNum === 1 || prevChallengeDetail?.status === 'completed';
+                      const isAccessible = prevCompleted && !isCompleted;
+                      const isLocked = !prevCompleted && !isCompleted && !isInProgress;
+
                       return (
                         <div
                           key={challengeNum}
@@ -431,19 +438,21 @@ function Dashboard({ sessionState, onRefresh }) {
                           onMouseLeave={() => setHoveredChallenge(null)}
                           style={{
                             padding: '18px', borderRadius: '12px',
-                            background: hoveredChallenge === challengeKey ?
-                              'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)',
+                            background: hoveredChallenge === challengeKey && !isLocked ?
+                              'rgba(255,255,255,0.08)' : isLocked ? 'rgba(255,255,255,0.01)' : 'rgba(255,255,255,0.03)',
                             border: isCompleted ?
                               '1px solid rgba(110,231,183,0.3)' :
-                              isInProgress ? '1px solid rgba(251,191,36,0.3)' : '1px solid rgba(255,255,255,0.06)',
-                            cursor: 'pointer',
+                              isInProgress ? '1px solid rgba(251,191,36,0.3)' :
+                              isLocked ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(255,255,255,0.06)',
+                            cursor: isLocked ? 'not-allowed' : 'pointer',
                             transition: 'all 0.3s ease',
-                            transform: hoveredChallenge === challengeKey ?
+                            transform: hoveredChallenge === challengeKey && !isLocked ?
                               'translateY(-2px)' : 'translateY(0)',
-                            boxShadow: hoveredChallenge === challengeKey ?
-                              '0 8px 24px rgba(139,92,246,0.2)' : 'none'
+                            boxShadow: hoveredChallenge === challengeKey && !isLocked ?
+                              '0 8px 24px rgba(139,92,246,0.2)' : 'none',
+                            opacity: isLocked ? 0.5 : 1
                           }}
-                          onClick={() => setExpandedChallenge(isExpanded ? null : challengeKey)}
+                          onClick={() => !isLocked && setExpandedChallenge(isExpanded ? null : challengeKey)}
                         >
                           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: isExpanded ? '16px' : '0' }}>
                             <div style={{
@@ -453,13 +462,17 @@ function Dashboard({ sessionState, onRefresh }) {
                                 'linear-gradient(135deg, #6ee7b7 0%, #10b981 100%)' :
                                 isInProgress ?
                                   'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)' :
-                                  'rgba(139,92,246,0.15)',
+                                  isLocked ? 'rgba(100,100,100,0.15)' : 'rgba(139,92,246,0.15)',
                               boxShadow: isCompleted ? '0 0 12px rgba(110,231,183,0.4)' :
                                 isInProgress ? '0 0 12px rgba(251,191,36,0.4)' : 'none',
                               fontSize: '14px', fontWeight: 600,
-                              color: (isCompleted || isInProgress) ? '#ffffff' : '#a78bfa'
+                              color: (isCompleted || isInProgress) ? '#ffffff' : isLocked ? 'rgba(255,255,255,0.3)' : '#a78bfa'
                             }}>
-                              {isCompleted ? '✓' : isInProgress ? '◐' : challengeNum}
+                              {isCompleted ? '✓' : isInProgress ? '◐' : isLocked ? (
+                                <svg style={{ width: '14px', height: '14px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                </svg>
+                              ) : challengeNum}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{
@@ -471,9 +484,9 @@ function Dashboard({ sessionState, onRefresh }) {
                               </div>
                               <div style={{
                                 fontSize: '12px',
-                                color: isCompleted ? '#6ee7b7' : isInProgress ? '#fbbf24' : 'rgba(255,255,255,0.4)'
+                                color: isCompleted ? '#6ee7b7' : isInProgress ? '#fbbf24' : isLocked ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.4)'
                               }}>
-                                {isCompleted ? 'Completed' : isInProgress ? 'In Progress' : 'Not Started'}
+                                {isCompleted ? 'Completed' : isInProgress ? 'In Progress' : isLocked ? 'Locked' : 'Not Started'}
                               </div>
                             </div>
                             <svg style={{
@@ -485,103 +498,62 @@ function Dashboard({ sessionState, onRefresh }) {
                             </svg>
                           </div>
 
-                          {/* URAC Blueprint - Expanded */}
+                          {/* Start/Continue button - Expanded */}
                           {isExpanded && (
                             <div style={{ paddingTop: '12px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                              <div style={{ display: 'grid', gap: '12px' }}>
-                                {/* Understand */}
-                                {urac.understand && (
-                                  <div style={{
-                                    padding: '12px', borderRadius: '8px',
-                                    background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.15)'
-                                  }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                                      <div style={{
-                                        width: '20px', height: '20px', borderRadius: '4px',
-                                        background: 'rgba(139,92,246,0.2)', display: 'flex',
-                                        alignItems: 'center', justifyContent: 'center'
-                                      }}>
-                                        <span style={{ fontSize: '12px' }}>🧠</span>
-                                      </div>
-                                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#c4b5fd', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                        Understand
-                                      </span>
-                                    </div>
-                                    <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', margin: 0, lineHeight: 1.4 }}>
-                                      {urac.understand}
-                                    </p>
-                                  </div>
-                                )}
-                                {/* Retain */}
-                                {urac.retain && (
-                                  <div style={{
-                                    padding: '12px', borderRadius: '8px',
-                                    background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.15)'
-                                  }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                                      <div style={{
-                                        width: '20px', height: '20px', borderRadius: '4px',
-                                        background: 'rgba(99,102,241,0.2)', display: 'flex',
-                                        alignItems: 'center', justifyContent: 'center'
-                                      }}>
-                                        <span style={{ fontSize: '12px' }}>💾</span>
-                                      </div>
-                                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                        Retain
-                                      </span>
-                                    </div>
-                                    <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', margin: 0, lineHeight: 1.4 }}>
-                                      {urac.retain}
-                                    </p>
-                                  </div>
-                                )}
-                                {/* Apply */}
-                                {urac.apply && (
-                                  <div style={{
-                                    padding: '12px', borderRadius: '8px',
-                                    background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.15)'
-                                  }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                                      <div style={{
-                                        width: '20px', height: '20px', borderRadius: '4px',
-                                        background: 'rgba(251,191,36,0.2)', display: 'flex',
-                                        alignItems: 'center', justifyContent: 'center'
-                                      }}>
-                                        <span style={{ fontSize: '12px' }}>🔧</span>
-                                      </div>
-                                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#fbbf24', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                        Apply
-                                      </span>
-                                    </div>
-                                    <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', margin: 0, lineHeight: 1.4 }}>
-                                      {urac.apply}
-                                    </p>
-                                  </div>
-                                )}
-                                {/* Connect */}
-                                {urac.connect && (
-                                  <div style={{
-                                    padding: '12px', borderRadius: '8px',
-                                    background: 'rgba(110,231,183,0.08)', border: '1px solid rgba(110,231,183,0.15)'
-                                  }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-                                      <div style={{
-                                        width: '20px', height: '20px', borderRadius: '4px',
-                                        background: 'rgba(110,231,183,0.2)', display: 'flex',
-                                        alignItems: 'center', justifyContent: 'center'
-                                      }}>
-                                        <span style={{ fontSize: '12px' }}>🔗</span>
-                                      </div>
-                                      <span style={{ fontSize: '11px', fontWeight: 600, color: '#6ee7b7', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                                        Connect
-                                      </span>
-                                    </div>
-                                    <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)', margin: 0, lineHeight: 1.4 }}>
-                                      {urac.connect}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
+                              {!isCompleted && !isLocked && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/lesson/${module.module_number}/${challengeNum}`);
+                                  }}
+                                  style={{
+                                    width: '100%', padding: '12px 20px',
+                                    borderRadius: '8px',
+                                    background: isInProgress
+                                      ? 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)'
+                                      : 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 50%, #6366f1 100%)',
+                                    border: 'none',
+                                    color: isInProgress ? '#000' : '#fff',
+                                    fontSize: '14px', fontWeight: 600,
+                                    cursor: 'pointer', transition: 'all 0.3s',
+                                    boxShadow: isInProgress
+                                      ? '0 4px 15px rgba(251,191,36,0.3)'
+                                      : '0 4px 15px rgba(139,92,246,0.3)',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                                  }}
+                                  onMouseOver={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-2px)';
+                                    e.currentTarget.style.boxShadow = isInProgress
+                                      ? '0 8px 25px rgba(251,191,36,0.4)'
+                                      : '0 8px 25px rgba(139,92,246,0.4)';
+                                  }}
+                                  onMouseOut={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = isInProgress
+                                      ? '0 4px 15px rgba(251,191,36,0.3)'
+                                      : '0 4px 15px rgba(139,92,246,0.3)';
+                                  }}
+                                >
+                                  {isInProgress ? (
+                                    <>
+                                      <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                      Continue Lesson
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                      </svg>
+                                      Start Lesson
+                                    </>
+                                  )}
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
