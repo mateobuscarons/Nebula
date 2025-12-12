@@ -7,6 +7,30 @@ import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
+// Strip markdown syntax from text for plain text display
+const stripMarkdown = (text) => {
+  if (!text) return '';
+  return text
+    // Remove headers (## Heading → Heading)
+    .replace(/^#{1,6}\s+/gm, '')
+    // Remove bold (**bold** or __bold__ → bold)
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    // Remove italic (*italic* or _italic_ → italic)
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/_(.+?)_/g, '$1')
+    // Remove inline code (`code` → code)
+    .replace(/`(.+?)`/g, '$1')
+    // Remove links ([link](url) → link)
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1')
+    // Remove horizontal rules
+    .replace(/^[-*_]{3,}\s*$/gm, '')
+    // Remove blockquotes (> quote → quote)
+    .replace(/^>\s+/gm, '')
+    // Remove strikethrough (~~text~~ → text)
+    .replace(/~~(.+?)~~/g, '$1');
+};
+
 function LessonPage({ onComplete }) {
   const { moduleNumber, challengeNumber } = useParams();
   const navigate = useNavigate();
@@ -50,13 +74,19 @@ function LessonPage({ onComplete }) {
 
     // Handle editor content
     const editor = response.editor_content;
-    if (editor) {
-      // If editor content is provided, set it (could be scaffolding or empty)
+    if (editor && editor.type === 'code') {
+      // Only use code editor when explicitly type: "code"
       setEditorContent(editor.content || '');
-      setEditorType(editor.type || 'text');
+      setEditorType('code');
       setEditorLanguage(editor.language || 'yaml');
+    } else if (editor && editor.type === 'text') {
+      // Text type with provided content/template - strip markdown for plain text display
+      setEditorContent(stripMarkdown(editor.content || ''));
+      setEditorType('text');
+      setEditorLanguage('text');
     } else {
-      // If no editor_content in response, clear editor for new input
+      // No editor_content (null) or unknown type - use simple text input
+      // This is the default for TEACHING phase where learners type freely
       setEditorContent('');
       setEditorType('text');
       setEditorLanguage('text');
@@ -377,21 +407,28 @@ function LessonPage({ onComplete }) {
                 components={{
                   code({ node, inline, className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '');
-                    return !inline && match ? (
-                      <SyntaxHighlighter
-                        style={oneDark}
-                        language={match[1]}
-                        PreTag="div"
-                        customStyle={{
-                          margin: '16px 0',
-                          borderRadius: '8px',
-                          fontSize: '13px'
-                        }}
-                        {...props}
-                      >
-                        {String(children).replace(/\n$/, '')}
-                      </SyntaxHighlighter>
-                    ) : (
+                    const isBlock = !inline && (match || String(children).includes('\n'));
+
+                    if (isBlock) {
+                      return (
+                        <SyntaxHighlighter
+                          style={oneDark}
+                          language={match ? match[1] : 'text'}
+                          PreTag="div"
+                          customStyle={{
+                            margin: '16px 0',
+                            borderRadius: '8px',
+                            fontSize: '13px',
+                            padding: '16px'
+                          }}
+                          {...props}
+                        >
+                          {String(children).replace(/\n$/, '')}
+                        </SyntaxHighlighter>
+                      );
+                    }
+
+                    return (
                       <code
                         style={{
                           background: 'rgba(139,92,246,0.15)',
@@ -425,6 +462,9 @@ function LessonPage({ onComplete }) {
                     </blockquote>
                   ),
                   strong: ({ children }) => <strong style={{ color: '#fff', fontWeight: 600 }}>{children}</strong>,
+                  em: ({ children }) => <em style={{ color: 'rgba(255,255,255,0.9)', fontStyle: 'italic' }}>{children}</em>,
+                  hr: () => <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '24px 0' }} />,
+                  pre: ({ children }) => <>{children}</>,
                 }}
               >
                 {currentResponse}
@@ -468,29 +508,61 @@ function LessonPage({ onComplete }) {
             </div>
 
             {/* Editor content */}
-            <div style={{ padding: '0' }}>
-              <Editor
-                height="300px"
-                language={editorType === 'code' ? editorLanguage : 'markdown'}
-                value={editorContent}
-                onChange={(value) => setEditorContent(value || '')}
-                onMount={(editor, monaco) => {
-                  // Add Cmd/Ctrl + Enter to submit
-                  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
-                    handleSubmit();
-                  });
-                }}
-                theme="vs-dark"
-                options={{
-                  minimap: { enabled: false },
-                  fontSize: 14,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false,
-                  padding: { top: 16, bottom: 16 },
-                  wordWrap: 'on',
-                  automaticLayout: true,
-                }}
-              />
+            <div style={{ padding: editorType === 'code' ? '0' : '16px' }}>
+              {editorType === 'code' ? (
+                <Editor
+                  height="300px"
+                  language={editorLanguage}
+                  value={editorContent}
+                  onChange={(value) => setEditorContent(value || '')}
+                  onMount={(editor, monaco) => {
+                    // Add Cmd/Ctrl + Enter to submit
+                    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
+                      handleSubmit();
+                    });
+                  }}
+                  theme="vs-dark"
+                  options={{
+                    minimap: { enabled: false },
+                    fontSize: 14,
+                    lineNumbers: 'on',
+                    scrollBeyondLastLine: false,
+                    padding: { top: 16, bottom: 16 },
+                    wordWrap: 'on',
+                    automaticLayout: true,
+                  }}
+                />
+              ) : (
+                <textarea
+                  value={editorContent}
+                  onChange={(e) => setEditorContent(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type your answer here..."
+                  style={{
+                    width: '100%',
+                    minHeight: '200px',
+                    background: 'rgba(0,0,0,0.3)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    color: 'rgba(255,255,255,0.9)',
+                    fontSize: '15px',
+                    lineHeight: '1.6',
+                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                    resize: 'vertical',
+                    outline: 'none',
+                    transition: 'border-color 0.2s, box-shadow 0.2s',
+                  }}
+                  onFocus={(e) => {
+                    e.target.style.borderColor = 'rgba(139,92,246,0.5)';
+                    e.target.style.boxShadow = '0 0 0 3px rgba(139,92,246,0.1)';
+                  }}
+                  onBlur={(e) => {
+                    e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+                    e.target.style.boxShadow = 'none';
+                  }}
+                />
+              )}
             </div>
 
             {/* Submit button */}

@@ -308,7 +308,7 @@ class MasteryEngine:
         # Use system_instruction parameter instead of prepending as user message
         generate_content_config = types.GenerateContentConfig(
             system_instruction=system_prompt,
-            temperature=0.3,
+            temperature=0.0,
             top_p=0.95,
             max_output_tokens=4000,
             response_mime_type="application/json",  # Force JSON output
@@ -511,6 +511,21 @@ You will execute this lesson following the URAC framework. The blueprint below d
    - Validate their success
    - Explain why this matters for their goal
 
+# PEDAGOGICAL STRUCTURE FOR conversation_content
+
+Your teaching content should be easy to read and learn from. Adapt the structure to what the moment requires - there is no rigid template. Use your judgment to create clarity.
+**What to include:**
+- Bullet Points when they provide clarity
+- Bold when emphasizing key points
+- Code Snippets when providing code examples
+- Headings for structuring the contents
+
+**What to avoid:**
+- Walls of text without breaks
+- Labeling pedagogical moves ("Now let's test your understanding...")
+
+The structure should feel natural, not formulaic. Each response may need different formatting based on its purpose.
+
 # INSTRUCTIONAL FLOW
 
 **Phase A: TEACHING (2-3 turns)**
@@ -574,7 +589,7 @@ You will execute this lesson following the URAC framework. The blueprint below d
 
 {{
   "thought_process": "Your internal reasoning about the learner's current understanding, what phase you're in, and what you're trying to achieve in this response.",
-  "conversation_content": "The text displayed in the Chat UI. This is your teaching content, questions, feedback, or task instructions. Write directly to the learner.",
+  "conversation_content": "The markdown displayed in the Chat UI. This is your teaching content, questions, feedback, or task instructions. Write directly to the learner.",
   "editor_content": null OR {{
     "type": "code OR text",
     "language": "yaml | python | javascript | bash | markdown | etc",
@@ -604,8 +619,7 @@ You will execute this lesson following the URAC framework. The blueprint below d
 
 - **editor_content in TEACHING phase:** Set to null when asking Retain questions. No scaffolding, templates, or hints. The learner answers in their own words.
 - **editor_content in APPLICATION phase:** Provide what requires low cognitive effort but is time-consuming. Require the learner to do what requires high cognitive effort. Should NOT be copy-pasteable.
-- **conversation_content:** Be concise, clear, and Socratic when remediating
-- Use appropriate content type for the lesson
+- **conversation_content:** Write in **markdown format** for clarity. Use line breaks between ideas, **bold** for key terms, `code` for syntax, and code blocks for examples. Structure content for easy reading - short paragraphs, clear visual hierarchy. Be concise and Socratic when remediating.
 
 # YOUR MISSION
 

@@ -16,4 +16,6 @@ ENV/
 *.swo
 *.json
 *.md
+*.db-wal
+*.db-shm
 LPgroq.py
