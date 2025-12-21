@@ -19,3 +19,4 @@ ENV/
 *.db-wal
 *.db-shm
 LPgroq.py
+!README.md
