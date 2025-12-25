@@ -772,6 +772,7 @@ class Database:
             List of user token usage summaries with cost breakdown
         """
         # Use subqueries to avoid Cartesian product from multiple JOINs
+        # Cast UUIDs explicitly to ensure proper matching
         query = """
             SELECT
                 u.id as user_id,
@@ -784,25 +785,25 @@ class Database:
                 up.last_active
             FROM auth.users u
             LEFT JOIN (
-                SELECT user_id,
+                SELECT user_id::uuid as uid,
                        SUM(prompt_tokens) as input_tokens,
                        SUM(completion_tokens) as output_tokens,
                        SUM(total_tokens) as total_tokens
                 FROM token_usage
                 GROUP BY user_id
-            ) t ON u.id = t.user_id
+            ) t ON u.id = t.uid
             LEFT JOIN (
-                SELECT user_id, COUNT(*) as paths_created
+                SELECT user_id::uuid as uid, COUNT(*) as paths_created
                 FROM learning_paths
                 GROUP BY user_id
-            ) lp ON u.id = lp.user_id
+            ) lp ON u.id = lp.uid
             LEFT JOIN (
-                SELECT user_id, COUNT(*) as lessons_completed
+                SELECT user_id::uuid as uid, COUNT(*) as lessons_completed
                 FROM challenge_progress
                 WHERE status = 'completed'
                 GROUP BY user_id
-            ) cp ON u.id = cp.user_id
-            LEFT JOIN user_profiles up ON u.id = up.user_id
+            ) cp ON u.id = cp.uid
+            LEFT JOIN user_profiles up ON u.id::uuid = up.user_id::uuid
             ORDER BY total_tokens DESC
         """
         return self._execute_query(query, fetch_all=True)
