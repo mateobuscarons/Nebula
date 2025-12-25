@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
-import { Navigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import './AdminDashboard.css';
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -45,7 +46,7 @@ export default function AdminDashboard() {
             `Error: ${error}`
           }
         </div>
-        <button onClick={() => window.history.back()}>Go Back</button>
+        <button onClick={() => navigate('/dashboard')}>Go to Dashboard</button>
       </div>
     );
   }
@@ -54,7 +55,7 @@ export default function AdminDashboard() {
     <div className="admin-dashboard">
       <header className="admin-header">
         <h1>Admin Dashboard</h1>
-        <button onClick={() => window.history.back()}>← Back</button>
+        <button onClick={() => navigate('/dashboard')}>← Dashboard</button>
       </header>
 
       <div className="admin-content">
@@ -135,27 +136,33 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Daily Usage Chart (Simple List) */}
+        {/* Daily Usage Table */}
         <div className="daily-usage-section">
           <h2>Token Usage (Last 30 Days)</h2>
-          <div className="usage-list">
-            {stats?.daily_usage?.map(day => (
-              <div key={day.date} className="usage-item">
-                <span className="usage-date">{day.date}</span>
-                <div className="usage-bar-container">
-                  <div
-                    className="usage-bar"
-                    style={{width: `${Math.min(day.percentage, 100)}%`}}
-                  ></div>
-                </div>
-                <span className="usage-count">{day.tokens.toLocaleString()}</span>
-              </div>
-            ))}
-            {(!stats?.daily_usage || stats.daily_usage.length === 0) && (
-              <p style={{textAlign: 'center', color: '#999', padding: '40px'}}>
-                No usage data yet
-              </p>
-            )}
+          <div className="table-container">
+            <table className="users-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Tokens</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stats?.daily_usage?.map(day => (
+                  <tr key={day.date}>
+                    <td>{day.date}</td>
+                    <td>{day.tokens.toLocaleString()}</td>
+                  </tr>
+                ))}
+                {(!stats?.daily_usage || stats.daily_usage.length === 0) && (
+                  <tr>
+                    <td colSpan="2" style={{textAlign: 'center', padding: '40px', color: '#999'}}>
+                      No usage data yet
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

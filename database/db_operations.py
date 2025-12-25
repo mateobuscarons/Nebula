@@ -682,7 +682,7 @@ class Database:
         agent_name: str,
         prompt_tokens: int,
         completion_tokens: int,
-        total_tokens: int,
+        total_tokens: int = None,  # Ignored - calculated from prompt + completion
         model_name: str = None
     ):
         """
@@ -693,9 +693,12 @@ class Database:
             agent_name: Name of the AI agent ('learning_path', 'module_planner', etc.)
             prompt_tokens: Input tokens
             completion_tokens: Output tokens
-            total_tokens: Total tokens
+            total_tokens: Ignored - always calculated as prompt + completion
             model_name: Model identifier
         """
+        # Always calculate total as sum of input + output for accurate cost tracking
+        calculated_total = prompt_tokens + completion_tokens
+
         query = """
             INSERT INTO token_usage
             (user_id, agent_name, prompt_tokens, completion_tokens, total_tokens, model_name)
@@ -703,7 +706,7 @@ class Database:
         """
         self._execute_query(
             query,
-            (user_id, agent_name, prompt_tokens, completion_tokens, total_tokens, model_name)
+            (user_id, agent_name, prompt_tokens, completion_tokens, calculated_total, model_name)
         )
 
     def get_user_token_usage(self, user_id: str) -> Dict[str, Any]:
@@ -768,22 +771,38 @@ class Database:
         Returns:
             List of user token usage summaries with cost breakdown
         """
+        # Use subqueries to avoid Cartesian product from multiple JOINs
         query = """
             SELECT
                 u.id as user_id,
                 u.email,
-                COALESCE(SUM(t.prompt_tokens), 0) as input_tokens,
-                COALESCE(SUM(t.completion_tokens), 0) as output_tokens,
-                COALESCE(SUM(t.total_tokens), 0) as total_tokens,
-                COUNT(DISTINCT lp.id) as paths_created,
-                COUNT(DISTINCT cp.id) FILTER (WHERE cp.status = 'completed') as lessons_completed,
-                MAX(up.last_active) as last_active
+                COALESCE(t.input_tokens, 0) as input_tokens,
+                COALESCE(t.output_tokens, 0) as output_tokens,
+                COALESCE(t.total_tokens, 0) as total_tokens,
+                COALESCE(lp.paths_created, 0) as paths_created,
+                COALESCE(cp.lessons_completed, 0) as lessons_completed,
+                up.last_active
             FROM auth.users u
-            LEFT JOIN token_usage t ON u.id = t.user_id
-            LEFT JOIN learning_paths lp ON u.id = lp.user_id
+            LEFT JOIN (
+                SELECT user_id,
+                       SUM(prompt_tokens) as input_tokens,
+                       SUM(completion_tokens) as output_tokens,
+                       SUM(total_tokens) as total_tokens
+                FROM token_usage
+                GROUP BY user_id
+            ) t ON u.id = t.user_id
+            LEFT JOIN (
+                SELECT user_id, COUNT(*) as paths_created
+                FROM learning_paths
+                GROUP BY user_id
+            ) lp ON u.id = lp.user_id
+            LEFT JOIN (
+                SELECT user_id, COUNT(*) as lessons_completed
+                FROM challenge_progress
+                WHERE status = 'completed'
+                GROUP BY user_id
+            ) cp ON u.id = cp.user_id
             LEFT JOIN user_profiles up ON u.id = up.user_id
-            LEFT JOIN challenge_progress cp ON u.id = cp.user_id
-            GROUP BY u.id, u.email
             ORDER BY total_tokens DESC
         """
         return self._execute_query(query, fetch_all=True)
