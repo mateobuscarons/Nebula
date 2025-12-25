@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 function Dashboard({ sessionState, onRefresh, cachedData, setCachedData }) {
   const [progress, setProgress] = useState(cachedData?.progress || null);
@@ -10,6 +11,12 @@ function Dashboard({ sessionState, onRefresh, cachedData, setCachedData }) {
   const [expandedChallenge, setExpandedChallenge] = useState(null);
   const [expandedModule, setExpandedModule] = useState(null);
   const navigate = useNavigate();
+  const { signOut } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/');
+  };
 
   useEffect(() => {
     // Only load if no cached data
@@ -156,6 +163,41 @@ function Dashboard({ sessionState, onRefresh, cachedData, setCachedData }) {
           color: 'rgba(255,255,255,0.85)'
         }}>Nebula Learn</span>
       </div>
+
+      {/* Logout Button */}
+      <button
+        onClick={handleLogout}
+        style={{
+          position: 'absolute', top: '28px', right: '32px', zIndex: 50,
+          padding: '8px 16px',
+          background: 'rgba(255,255,255,0.06)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '8px',
+          color: 'rgba(255,255,255,0.7)',
+          fontSize: '14px',
+          fontWeight: 500,
+          cursor: 'pointer',
+          transition: 'all 0.2s ease',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px'
+        }}
+        onMouseEnter={(e) => {
+          e.target.style.background = 'rgba(255,255,255,0.1)';
+          e.target.style.color = 'rgba(255,255,255,0.9)';
+          e.target.style.borderColor = 'rgba(255,255,255,0.2)';
+        }}
+        onMouseLeave={(e) => {
+          e.target.style.background = 'rgba(255,255,255,0.06)';
+          e.target.style.color = 'rgba(255,255,255,0.7)';
+          e.target.style.borderColor = 'rgba(255,255,255,0.1)';
+        }}
+      >
+        <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+        Logout
+      </button>
 
       {/* Main content */}
       <div style={{

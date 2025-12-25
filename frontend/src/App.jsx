@@ -54,10 +54,23 @@ function AppContent() {
     );
   }
 
+  // Determine the correct route for logged-in users
+  const getRedirectPath = () => {
+    if (!sessionState) return '/setup'; // Default while loading
+    switch (sessionState.state) {
+      case 'new_user': return '/setup';
+      case 'path_approval': return '/approve';
+      case 'dashboard': return '/dashboard';
+      default: return '/setup';
+    }
+  };
+
   return (
     <Routes>
-      {/* Public Routes */}
-      <Route path="/" element={<LandingPage />} />
+      {/* Public Routes - redirect logged in users to appropriate page */}
+      <Route path="/" element={
+        user ? <Navigate to={getRedirectPath()} replace /> : <LandingPage />
+      } />
 
       {/* Protected Routes */}
       <Route
