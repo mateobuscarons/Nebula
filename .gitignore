@@ -20,3 +20,4 @@ ENV/
 *.db-shm
 LPgroq.py
 !README.md
+!vercel.json
