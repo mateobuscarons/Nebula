@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 
 function SetupPage({ onComplete }) {
+  const navigate = useNavigate();
   const [userContext, setUserContext] = useState('');
   const [learningGoal, setLearningGoal] = useState('');
   const [loading, setLoading] = useState(false);
@@ -50,6 +52,8 @@ function SetupPage({ onComplete }) {
     try {
       await api.setup(learningGoal, userContext);
       onComplete();
+      // Navigate to path approval page after successful setup
+      navigate('/approve');
     } catch (err) {
       setError(err.message);
     } finally {

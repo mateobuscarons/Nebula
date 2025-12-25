@@ -21,7 +21,7 @@ class LearningPathAgent:
 
     def __init__(self):
         """Initialize the agent with Google GenAI client."""
-        self.model_name = "gemini-flash-latest"
+        self.model_name = "gemini-3-flash-preview"
         self.client = self._setup_llm()
 
     def _setup_llm(self):
@@ -51,80 +51,62 @@ class LearningPathAgent:
 
         print(f"🤖 Generating learning path with Gemini Flash...\n")
 
-        system_prompt = """You are an expert instructional designer and curriculum architect. Your task is to generate a personalized, goal-driven learning path that efficiently bridges the gap between a learner's current expertise and their target objective.
+        system_prompt = """You are an expert instructional designer. Generate a learning journey that bridges the gap between a learner's baseline and their objective.
 
 ## INPUTS
-You will receive:
-1. **User's Baseline**: Their current knowledge, skills, experience, and what they can already accomplish related to the objective.
-2. **User's Objective**: The specific, practical outcome they want to achieve. This is the north star—every module must serve this goal.
+1. **User's Baseline**: Current knowledge, skills, and experience.
+2. **User's Objective**: The specific outcome they want to achieve.
 
 ## YOUR TASK
-Analyze the gap between baseline and objective, then construct a lean, progressive curriculum of **Minimum Viable Knowledge (MVK)**—the essential theory and practice required to achieve the objective, nothing more.
+Create a lean curriculum of **Minimum Viable Knowledge (MVK)**—only what's essential to achieve the objective.
 
-## CURRICULUM DESIGN PRINCIPLES
+## DESIGN PRINCIPLES
 
-### 1. Gap-Focused
-- Include ONLY what closes the gap between current state and objective
-- Exclude any topic the user already knows or that doesn't directly enable the goal
-- If the user has strong foundations, the path should be short; if foundations are missing, build them
+1. **Gap-Focused**: Only include what closes the baseline→objective gap. Exclude what they already know.
+2. **Narrative Flow**: Design chapters like episodes in a series—each one ends with a cliffhanger that the next chapter resolves. The learner should feel momentum, not isolated modules.
+3. **Progressive**: Each chapter builds on the previous. The artifact/skill from Chapter N becomes the foundation for Chapter N+1.
+4. **Outcome-Oriented**: Focus on what user CAN DO after each chapter, not abstract knowledge.
+5. **Lean**: 2-8 chapters. Prefer fewer, deeper chapters over many shallow ones.
 
-### 2. Theory-Practice Balance
-- Each module must blend conceptual understanding ("why" and "how it works") with hands-on application ("do it")
-- Theory exists to enable confident application, not for its own sake
-- Application must be realistic and tied to the stated objective
-- Applications must be achievable independently or via AI-assisted simulation (no dependency on external partners or teams).
-
-### 3. Pedagogical Scaffolding & Isolation
-- **Separation of Concerns**: Ensure each module targets a single "failure domain" or conceptual leap. Do not bundle distinct complex topics.
-- **Linear Progression**: Sequence modules so the output of Module N becomes the input for Module N+1.
-- Build mental models progressively—connect new concepts to prior ones.
-
-### 4. Pragmatic Scope & Density
-- **Cognitive Load Management**: Better to have 5 focused modules than 3 dense ones. If an Application step requires the user to juggle more than 3 distinct new concepts, split the module.
-- Design for busy professionals: Modules must be substantial but finishable in one sitting.
-- Total curriculum: minimum 2 modules, maximum 8 modules.
-
-### 5. Strict Scope & Exclusion Criteria
-Apply these filters rigorously. Only include a topic/module if it meets **ALL** of these conditions:
-1. The learner **CANNOT** achieve the stated objective without this knowledge.
-2. Skipping it would cause immediate failure or broken functionality.
-3. It is not already covered by another module (even partially).
-
-**Explicitly EXCLUDE:**
-- Best practices or optimizations (unless essential for basic functionality).
-- Topics the user didn't ask for (Scope Creep).
-- Enhancements beyond what the objective explicitly or implicitly requires.
-- Learnings that depend on resources, access, or approvals outside the learner's direct control (e.g., paid services, cloud accounts, proprietary tools).
+## STRICT EXCLUSION
+Only include a chapter if the learner CANNOT achieve the objective without it. Exclude:
+- Best practices (unless essential for basic functionality)
+- Scope creep beyond the stated objective
+- Topics requiring external resources outside learner's control
+- Historical context or "why it was created" unless directly relevant
 
 ## OUTPUT FORMAT
-Return a single valid JSON object with this exact structure:
+Return a single valid JSON object:
 
 {
-  "pedagogical_strategy": "Brief analysis of: (1) the key gaps identified, (2) the sequencing logic, and (3) any baseline strengths you're leveraging.",
-  "curriculum": [
+  "journey": {
+    "title": "Transformation arc (e.g., 'From X to Y' or 'Becoming a Z')",
+    "destination": "One sentence: what they'll be able to do/create/understand at the end"
+  },
+  "chapters": [
     {
-      "module_order": 1,
-      "title": "Concise, descriptive module title",
-      "competency_goal": "What you will understand and be able to do after completing this module. Write directly to the user using second person ('you will', 'you can'), NOT third person ('the learner will').",
-      "mental_map": [
-        "First core concept, framework, or theory point",
-        "Second core concept, framework, or theory point",
-        ...
-      ],
-      "application": [
-        "First specific hands-on exercise or practice activity",
-        "Second specific hands-on exercise or practice activity",
-        ..."
-      ],
-      "relevance_to_goal": "Explicitly state WHY this module is necessary and HOW it connects to achieving the user's objective."
+      "chapter": 1,
+      "title": "Achievement-focused title (what you'll accomplish)",
+      "outcome": "The concrete capability gained—what you can now build, do, or solve. Vary phrasing naturally.",
+      "unlocks": "The natural next question or limitation this creates—the hook into the next chapter (null for final)",
+      "concepts": ["Core concept with brief context", "Another essential concept"],
+      "practice": ["Specific hands-on task with clear deliverable", "Another practical exercise"]
     }
   ]
 }
 
+## WRITING STYLE
+- Write directly to user (second person: "you", not "the learner")
+- Vary sentence structure and vocabulary—avoid repetitive patterns across chapters
+- Use action verbs: build, create, configure, deploy, debug, integrate, etc.
+- Be specific: name technologies, patterns, or artifacts the learner will work with
+- Outcomes should feel like achievements, not checkboxes
+
 ## RULES
-- Output ONLY the JSON object. No preamble, no markdown code fences, no explanation outside the JSON.
-- Every module must have a clear, non-redundant purpose.
-- Write for clarity and actionability. Avoid vague descriptions."""
+- Output ONLY JSON. No markdown fences, no explanation.
+- Every chapter must have clear, non-redundant purpose.
+- Concepts: 2-4 essential ideas per chapter (quality over quantity)
+- Practice: 1-3 concrete activities that produce tangible results"""
 
         user_prompt = f"""<user_input>
 User Baseline: {user_context}
@@ -217,51 +199,42 @@ User Objective: {user_goal}
 
         original_path_json = json.dumps(original_path, indent=2)
 
-        system_prompt = """You are a curriculum refinement specialist. Your task is to ADJUST an existing learning path based on user feedback.
+        system_prompt = """You are a curriculum refinement specialist. ADJUST the learning path based on user feedback.
 
-## CRITICAL RULES
-1. The original learning path is HIGH QUALITY and should be treated as the ideal baseline
-2. Make MINIMAL changes - only what the feedback specifically requests
-3. Preserve the pedagogical structure and sequencing logic
-4. Do NOT add modules unless explicitly requested
-5. Do NOT remove modules unless explicitly requested
-6. Adjust content within modules when possible instead of restructuring
-
-## ADJUSTMENT PRINCIPLES
-- If feedback asks to add a topic: integrate it into the most relevant existing module, or add a new module only if it's truly distinct
-- If feedback asks to remove something: remove it cleanly without breaking dependencies
-- If feedback asks for more/less depth: adjust the content accordingly
-- If feedback is about pacing: consider splitting or merging modules
+## RULES
+1. The original path is HIGH QUALITY—make MINIMAL changes
+2. Only adjust what the feedback specifically requests
+3. Preserve the narrative flow and chapter dependencies
+4. Do NOT add/remove chapters unless explicitly requested
 
 ## OUTPUT FORMAT
-Return ONLY a valid JSON object with this exact structure (same as input):
+Return ONLY valid JSON:
 
 {
-  "pedagogical_strategy": "Updated strategy reflecting the adjustments made",
-  "curriculum": [
+  "journey": {
+    "title": "Transformation arc",
+    "destination": "What they'll be able to do at the end"
+  },
+  "chapters": [
     {
-      "module_order": 1,
-      "title": "Module title",
-      "competency_goal": "What the learner will understand and be able to do",
-      "mental_map": [
-        "First core concept, framework, or theory point",
-        "Second core concept, framework, or theory point",
-        ...
-      ],
-      "application": [
-        "First specific hands-on exercise or practice activity",
-        "Second specific hands-on exercise or practice activity",
-        ...
-      ],
-      "relevance_to_goal": "WHY this module is necessary and HOW it connects to achieving the objective"
+      "chapter": 1,
+      "title": "Achievement-focused title",
+      "outcome": "Concrete capability gained—vary phrasing naturally across chapters",
+      "unlocks": "The hook into the next chapter—what question or limitation this creates (null for final)",
+      "concepts": ["Core concept", "Another concept"],
+      "practice": ["Hands-on task with deliverable", "Another exercise"]
     }
   ]
 }
 
-RULES:
-- Output ONLY the JSON object. No preamble, no markdown code fences, no explanation
-- Maintain module_order sequential ordering (1, 2, 3, ...)
-- Preserve the exact JSON structure of the original"""
+## WRITING STYLE
+- Write directly to user (second person: "you")
+- Vary sentence structure—avoid repetitive patterns
+- Outcomes should feel like achievements, not checkboxes
+
+## RULES
+- Output ONLY JSON. No markdown fences, no explanation.
+- Maintain sequential chapter ordering (1, 2, 3, ...)"""
 
         user_prompt = f"""## ORIGINAL LEARNING PATH (treat as ideal baseline):
 ```json
@@ -299,8 +272,8 @@ Adjust the learning path based on the feedback while preserving as much of the o
                 print(f"   🔢 Tokens: {usage.total_tokens:,} (In: {usage.prompt_tokens:,}, Out: {usage.completion_tokens:,})\n")
 
             adjusted_path = self._extract_json(content)
-            
-            print(f"✅ Learning path adjusted: {len(adjusted_path.get('curriculum', []))} modules\n")
+
+            print(f"✅ Learning path adjusted: {len(adjusted_path.get('chapters', []))} chapters\n")
             
             return {
                 "learning_path": adjusted_path
@@ -358,22 +331,23 @@ Adjust the learning path based on the feedback while preserving as much of the o
 def print_learning_path(path: dict):
     """Pretty print learning path."""
     print(f"\n{'='*80}")
-    print(f"LEARNING PATH GENERATED")
+    print(f"LEARNING JOURNEY")
     print(f"{'='*80}\n")
 
-    print(f"📋 PEDAGOGICAL STRATEGY:")
-    print(f"   {path.get('pedagogical_strategy', 'N/A')}\n")
+    journey = path.get('journey', {})
+    print(f"🎯 {journey.get('title', 'N/A')}")
+    print(f"   {journey.get('destination', 'N/A')}\n")
 
     print(f"{'─'*80}")
-    print(f"CURRICULUM ({len(path.get('curriculum', []))} modules):")
+    print(f"CHAPTERS ({len(path.get('chapters', []))} total):")
     print(f"{'─'*80}")
 
-    for module in path.get('curriculum', []):
-        print(f"\n[Module {module['module_order']}] {module['title']}")
-        print(f"  🎯 Competency Goal: {module['competency_goal']}")
-        print(f"  🧠 Mental Map: {module.get('mental_map', 'N/A')}")
-        print(f"  🔧 Application: {module.get('application', 'N/A')}")
-        print(f"  💡 Relevance: {module['relevance_to_goal']}")
+    for chapter in path.get('chapters', []):
+        print(f"\n[Chapter {chapter['chapter']}] {chapter['title']}")
+        print(f"  ✓ Outcome: {chapter['outcome']}")
+        print(f"  🧠 Concepts: {chapter.get('concepts', [])}")
+        print(f"  🔧 Practice: {chapter.get('practice', [])}")
+        print(f"  → Unlocks: {chapter.get('unlocks', 'N/A')}")
 
     print(f"\n{'='*80}\n")
 

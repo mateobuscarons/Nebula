@@ -1,0 +1,184 @@
+.admin-dashboard {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 40px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.admin-header h1 {
+  font-size: 28px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.admin-content {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+/* Summary Cards */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.summary-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.summary-card h3 {
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 12px;
+}
+
+.big-number {
+  font-size: 36px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.sub-text {
+  font-size: 12px;
+  color: #999;
+  margin-top: 8px;
+}
+
+/* Users Section */
+.users-section h2,
+.daily-usage-section h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 20px;
+}
+
+.table-container {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.users-table th {
+  background: #f8f8f8;
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.users-table td {
+  padding: 16px;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 14px;
+  color: #333;
+}
+
+.users-table tbody tr:hover {
+  background: #f8f8f8;
+}
+
+.users-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Daily Usage */
+.usage-list {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.usage-item {
+  display: grid;
+  grid-template-columns: 100px 1fr 120px;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.usage-item:last-child {
+  border-bottom: none;
+}
+
+.usage-date {
+  font-size: 13px;
+  color: #666;
+  font-weight: 500;
+}
+
+.usage-bar-container {
+  background: #f0f0f0;
+  height: 24px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.usage-bar {
+  background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+  height: 100%;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+.usage-count {
+  text-align: right;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a1a;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .admin-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .summary-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-item {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .usage-date {
+    font-weight: 600;
+  }
+
+  .usage-count {
+    text-align: left;
+  }
+}

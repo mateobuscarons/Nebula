@@ -2,17 +2,20 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 
-function Dashboard({ sessionState, onRefresh }) {
-  const [progress, setProgress] = useState(null);
-  const [challengesMetadata, setChallengesMetadata] = useState({});
-  const [loading, setLoading] = useState(true);
+function Dashboard({ sessionState, onRefresh, cachedData, setCachedData }) {
+  const [progress, setProgress] = useState(cachedData?.progress || null);
+  const [challengesMetadata, setChallengesMetadata] = useState(cachedData?.metadata || {});
+  const [loading, setLoading] = useState(!cachedData);
   const [hoveredChallenge, setHoveredChallenge] = useState(null);
   const [expandedChallenge, setExpandedChallenge] = useState(null);
   const [expandedModule, setExpandedModule] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    loadProgress();
+    // Only load if no cached data
+    if (!cachedData) {
+      loadProgress();
+    }
   }, []);
 
   const loadProgress = async () => {
@@ -23,6 +26,8 @@ function Dashboard({ sessionState, onRefresh }) {
       ]);
       setProgress(progressData);
       setChallengesMetadata(metadataData);
+      // Cache the data in parent
+      setCachedData?.({ progress: progressData, metadata: metadataData });
     } catch (error) {
       console.error('Failed to load progress:', error);
     } finally {

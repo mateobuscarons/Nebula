@@ -1,13 +1,15 @@
 """
-FastAPI Backend for Adaptive Learning OS
-Exposes REST API for learning path and module planning workflow
+FastAPI Backend for Adaptive Learning OS - Multi-tenant with Supabase Auth
+Exposes REST API for personalized technical learning with AI agents
 """
 
 import os
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from supabase import create_client, Client
+from dotenv import load_dotenv
 
 from agents.learning_path import LearningPathAgent
 from agents.module_planner import ModulePlannerAgent
@@ -15,25 +17,88 @@ from agents.module_planner import ModulePlannerAgent
 from database.db_operations import Database
 from mastery_engine.engine import MasteryEngine
 
+# Load environment variables
+load_dotenv()
+
 app = FastAPI(
     title="Adaptive Learning OS API",
-    description="Backend API for personalized technical learning with AI agents",
-    version="1.0.0"
+    description="Backend API for personalized technical learning with AI agents - Multi-tenant",
+    version="2.0.0"
 )
 
+# CORS configuration - allow frontend URL
+frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        frontend_url,
+        "http://localhost:5173",  # Local development
+        "http://localhost:3000",  # Alternative local port
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-db = Database(db_path="learning_system.db")
+# Initialize Supabase client for auth verification
+supabase_url = os.getenv("SUPABASE_URL")
+supabase_service_key = os.getenv("SUPABASE_SERVICE_KEY")
 
-# In-memory storage for active lesson sessions (single-user MVP)
+if not supabase_url or not supabase_service_key:
+    raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in environment variables")
+
+supabase: Client = create_client(supabase_url, supabase_service_key)
+
+# Initialize PostgreSQL database
+db = Database()
+
+# In-memory storage for active lesson sessions (per user)
+# Key: (user_id, module_num, challenge_num)
 active_lessons: Dict[tuple, MasteryEngine] = {}
 
+
+# ============================================================
+# AUTHENTICATION DEPENDENCY
+# ============================================================
+
+async def get_current_user(authorization: str = Header(None)) -> str:
+    """
+    Verify JWT token and extract user_id from Supabase auth
+
+    Args:
+        authorization: Bearer token from request header
+
+    Returns:
+        user_id (UUID string) from verified token
+
+    Raises:
+        HTTPException: If token is missing or invalid
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header format")
+
+    token = authorization.replace("Bearer ", "")
+
+    try:
+        # Verify token with Supabase
+        user_response = supabase.auth.get_user(token)
+
+        if not user_response or not user_response.user:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+        return user_response.user.id
+
+    except Exception as e:
+        print(f"❌ Auth error: {str(e)}")
+        raise HTTPException(status_code=401, detail="Authentication failed")
+
+
+# ============================================================
+# PYDANTIC MODELS
+# ============================================================
 
 class SetupRequest(BaseModel):
     """Initial setup request"""
@@ -43,14 +108,14 @@ class SetupRequest(BaseModel):
 
 class PathApprovalRequest(BaseModel):
     """Learning path approval/editing request"""
-    learning_path: Dict[str, Any] 
+    learning_path: Dict[str, Any]
 
 
 class PathAdjustmentRequest(BaseModel):
     """Learning path adjustment request with user feedback"""
     learning_path: Dict[str, Any]
     user_feedback: str
- 
+
 
 class SessionResponse(BaseModel):
     """Session state response"""
@@ -81,31 +146,43 @@ class LessonResponse(BaseModel):
     lesson_status: Dict[str, Any]
     lesson_info: Optional[Dict[str, Any]] = None
 
+
+# ============================================================
+# PUBLIC ENDPOINTS (No authentication required)
+# ============================================================
+
 @app.get("/")
 def root():
-    """Health check endpoint"""
+    """Health check endpoint - public"""
     return {
         "status": "ok",
         "service": "Adaptive Learning OS API",
-        "version": "1.0.0"
+        "version": "2.0.0",
+        "authentication": "Supabase Auth"
     }
 
 
+# ============================================================
+# PROTECTED ENDPOINTS (Authentication required)
+# ============================================================
+
 @app.get("/session", response_model=SessionResponse)
-def get_session():
+def get_session(user_id: str = Depends(get_current_user)):
     """
     Load or initialize user session
 
     Returns:
-        - new_user: No user exists, need to run setup
+        - new_user: No user profile exists, need to run setup
         - path_approval: Learning path generated, awaiting approval
         - dashboard: Learning path approved, ready to view modules
     """
-    user = db.get_first_user_profile()
-    print(f"🔍 /session: User found: {user is not None} (ID: {user['id'] if user else 'N/A'})")
+    # Get or create user profile
+    user_profile = db.get_user_profile(user_id)
 
-    if not user:
-        print(f"   → Returning state: new_user (no user)")
+    print(f"🔍 /session: User {user_id[:8]}... | Profile exists: {user_profile is not None}")
+
+    if not user_profile:
+        print(f"   → Returning state: new_user (no profile)")
         return SessionResponse(
             state="new_user",
             user_profile=None,
@@ -114,35 +191,35 @@ def get_session():
             progress_summary=None
         )
 
-    learning_path = db.get_learning_path(user["id"])
+    learning_path = db.get_learning_path(user_id)
     print(f"   Learning path found: {learning_path is not None}")
 
     if not learning_path:
-        print(f"   → Returning state: new_user (user exists but no learning path)")
+        print(f"   → Returning state: new_user (profile exists but no learning path)")
         return SessionResponse(
             state="new_user",
-            user_profile=user,
+            user_profile=user_profile,
             learning_path=None,
             current_challenge=None,
             progress_summary=None
         )
 
-    module_challenges = db.get_all_module_challenges(user["id"])
+    module_challenges = db.get_all_module_challenges(user_id)
 
     if not module_challenges:
         return SessionResponse(
             state="path_approval",
-            user_profile=user,
+            user_profile=user_profile,
             learning_path=learning_path,
             current_challenge=None,
             progress_summary=None
         )
 
-    progress_summary = db.get_progress_summary(user["id"])
+    progress_summary = db.get_progress_summary(user_id)
 
     return SessionResponse(
         state="dashboard",
-        user_profile=user,
+        user_profile=user_profile,
         learning_path=learning_path,
         current_challenge=None,
         progress_summary=progress_summary
@@ -150,12 +227,12 @@ def get_session():
 
 
 @app.post("/setup")
-def setup(request: SetupRequest):
+def setup(request: SetupRequest, user_id: str = Depends(get_current_user)):
     """
     Initial setup - Generate learning path
 
     Process:
-        1. Get or create user profile (single-user MVP)
+        1. Create or update user profile
         2. Run Learning Path Agent
         3. Save learning path to database
 
@@ -164,19 +241,18 @@ def setup(request: SetupRequest):
         - learning_path (for approval/editing)
     """
     try:
-        existing_user = db.get_first_user_profile()
-        if existing_user:
-            user_id = existing_user["id"]
-            print(f"🔄 Using existing user: {user_id}")
-        else:
-            user_id = db.create_user_profile(
-                learning_goal=request.learning_goal,
-                user_context=request.user_context
-            )
+        # Create or update user profile
+        user_profile = db.create_or_get_user_profile(
+            user_id=user_id,
+            learning_goal=request.learning_goal,
+            user_context=request.user_context
+        )
 
-        print(f"🚀 Generating learning path for: {request.learning_goal}")
+        print(f"🚀 Generating learning path for user {user_id[:8]}...")
+        print(f"   Goal: {request.learning_goal[:50]}...")
+
         agent = LearningPathAgent()
-        
+
         # The agent takes user_context (baseline) and user_goal (objective)
         learning_path_result = agent.generate(
             user_context=request.user_context,
@@ -185,7 +261,7 @@ def setup(request: SetupRequest):
 
         # The agent returns {"learning_path": {...}}
         learning_path_content = learning_path_result.get("learning_path", {})
-        
+
         learning_path_data = {
             "input": {
                 "user_baseline": request.user_context,
@@ -195,14 +271,18 @@ def setup(request: SetupRequest):
         }
 
         path_id = db.save_learning_path(user_id, learning_path_data)
-        num_modules = len(learning_path_content.get('curriculum', []))
-        print(f"✅ Learning path generated: {num_modules} modules")
+        # Support both old (curriculum) and new (chapters) schema
+        chapters = learning_path_content.get('chapters', learning_path_content.get('curriculum', []))
+        num_chapters = len(chapters)
+        print(f"✅ Learning path generated: {num_chapters} chapters")
+
+        # TODO: Log token usage here when we add tracking to agents
 
         return {
             "success": True,
             "user_id": user_id,
             "learning_path": learning_path_data,
-            "message": f"Generated {num_modules} modules"
+            "message": f"Generated {num_chapters} chapters"
         }
 
     except Exception as e:
@@ -211,34 +291,28 @@ def setup(request: SetupRequest):
 
 
 @app.post("/path/adjust")
-def adjust_path(request: PathAdjustmentRequest):
+def adjust_path(request: PathAdjustmentRequest, user_id: str = Depends(get_current_user)):
     """
     Adjust learning path based on user feedback
-    
+
     This endpoint uses the regenerate_with_feedback method to iteratively
     improve the learning path until user approval.
-    
+
     Returns:
         - user_id
         - learning_path (adjusted version)
     """
     try:
-        user = db.get_first_user_profile()
-        if not user:
-            raise HTTPException(status_code=404, detail="No user profile found")
-        
-        user_id = user["id"]
-        
         # Extract the learning path data
         learning_path_data = request.learning_path
         original_path = learning_path_data["learning_path"]
         # Support both old and new field names
         learning_goal = learning_path_data["input"].get("user_objective") or learning_path_data["input"].get("learning_goal", "")
         user_baseline = learning_path_data["input"].get("user_baseline", "")
-        
-        print(f"🔄 Adjusting learning path based on user feedback")
+
+        print(f"🔄 Adjusting learning path for user {user_id[:8]}...")
         print(f"   Feedback: {request.user_feedback}")
-        
+
         # Use the agent to regenerate with feedback
         agent = LearningPathAgent()
         adjusted_result = agent.regenerate_with_feedback(
@@ -246,10 +320,10 @@ def adjust_path(request: PathAdjustmentRequest):
             user_feedback=request.user_feedback,
             learning_goal=learning_goal
         )
-        
+
         # The agent returns {"learning_path": {...}}
         adjusted_path_content = adjusted_result.get("learning_path", {})
-        
+
         # Create new learning path data structure
         adjusted_learning_path_data = {
             "input": {
@@ -258,31 +332,33 @@ def adjust_path(request: PathAdjustmentRequest):
             },
             "learning_path": adjusted_path_content
         }
-        
+
         # Update the learning path in database
         db.update_learning_path(user_id, adjusted_learning_path_data)
-        
-        num_modules = len(adjusted_path_content.get('curriculum', []))
-        print(f"✅ Learning path adjusted: {num_modules} modules")
-        
+
+        # Support both old (curriculum) and new (chapters) schema
+        chapters = adjusted_path_content.get('chapters', adjusted_path_content.get('curriculum', []))
+        num_chapters = len(chapters)
+        print(f"✅ Learning path adjusted: {num_chapters} chapters")
+
         return {
             "success": True,
             "user_id": user_id,
             "learning_path": adjusted_learning_path_data,
-            "message": f"Adjusted to {num_modules} modules based on feedback"
+            "message": f"Adjusted to {num_chapters} chapters based on feedback"
         }
-        
+
     except Exception as e:
         print(f"❌ Path adjustment failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Path adjustment failed: {str(e)}")
 
 
 @app.post("/path/approve")
-def approve_path(request: PathApprovalRequest):
+def approve_path(request: PathApprovalRequest, user_id: str = Depends(get_current_user)):
     """
     Approve learning path and generate module challenges using URAC framework
 
-    This is when we generate all module challenges using the new Module Planner Agent
+    This is when we generate all module challenges using the Module Planner Agent
     with the URAC (Understand, Retain, Apply, Connect) framework.
 
     Returns:
@@ -291,39 +367,33 @@ def approve_path(request: PathApprovalRequest):
         - total_challenges
     """
     try:
-        user = db.get_first_user_profile()
-        if not user:
-            raise HTTPException(status_code=404, detail="No user profile found")
-
-        user_id = user["id"]
-
         learning_path = request.learning_path["learning_path"]
         # Support both old and new field names
         user_objective = request.learning_path["input"].get("user_objective") or request.learning_path["input"].get("learning_goal", "")
         user_baseline = request.learning_path["input"].get("user_baseline", "")
 
-        # Use 'curriculum' key from the new format
-        modules = learning_path.get("curriculum", [])
+        # Support both old (curriculum) and new (chapters) schema
+        chapters = learning_path.get("chapters", learning_path.get("curriculum", []))
 
-        print(f"\n🚀 Generating URAC lesson plans for {len(modules)} modules...")
+        print(f"\n🚀 Generating URAC lesson plans for user {user_id[:8]}... ({len(chapters)} chapters)")
 
-        # Initialize the new Module Planner Agent with gemini
+        # Initialize the Module Planner Agent with gemini
         planner_agent = ModulePlannerAgent(model_provider="gemini")
         total_challenges = 0
 
         # Track acquired knowledge across modules
         acquired_knowledge_history = []
 
-        for i, module in enumerate(modules):
-            # Use module_order from the new format
-            module_num = module.get("module_order", i + 1)
-            print(f"\n   📘 Module {module_num}: {module['title']}")
+        for i, chapter in enumerate(chapters):
+            # Support both old (module_order) and new (chapter) schema
+            chapter_num = chapter.get("chapter", chapter.get("module_order", i + 1))
+            print(f"\n   📘 Chapter {chapter_num}: {chapter['title']}")
 
             # Run the module planner agent with URAC framework
             lesson_plan_result = planner_agent.plan_module(
                 user_baseline=user_baseline,
                 user_objective=user_objective,
-                current_module=module,
+                current_module=chapter,
                 acquired_knowledge_history=acquired_knowledge_history
             )
 
@@ -347,8 +417,8 @@ def approve_path(request: PathApprovalRequest):
 
             # Save module challenges with URAC structure
             challenges_data = {
-                "module": module,
-                "module_id": lesson_plan_result.get("module_id", module_num),
+                "module": chapter,
+                "module_id": lesson_plan_result.get("module_id", chapter_num),
                 "module_context_bridge": lesson_plan_result.get("module_context_bridge", ""),
                 "lesson_plan": lesson_plan_result.get("lesson_plan", []),
                 "acquired_competencies": lesson_plan_result.get("acquired_competencies", []),
@@ -358,10 +428,10 @@ def approve_path(request: PathApprovalRequest):
                 }
             }
 
-            db.save_module_challenges(user_id, module_num, challenges_data)
-            db.initialize_module_progress(user_id, module_num, num_challenges)
+            db.save_module_challenges(user_id, chapter_num, challenges_data)
+            db.initialize_module_progress(user_id, chapter_num, num_challenges)
 
-            # Update acquired knowledge history for next module
+            # Update acquired knowledge history for next chapter
             acquired_knowledge_history.extend(
                 lesson_plan_result.get("acquired_competencies", [])
             )
@@ -369,11 +439,11 @@ def approve_path(request: PathApprovalRequest):
             total_challenges += num_challenges
             print(f"      ✅ {num_challenges} URAC challenges created")
 
-        print(f"\n✨ Total: {total_challenges} challenges across {len(modules)} modules")
+        print(f"\n✨ Total: {total_challenges} challenges across {len(chapters)} chapters")
 
         return {
             "success": True,
-            "total_modules": len(modules),
+            "total_chapters": len(chapters),
             "total_challenges": total_challenges,
             "message": f"Learning path finalized with {total_challenges} URAC-based challenges"
         }
@@ -386,7 +456,7 @@ def approve_path(request: PathApprovalRequest):
 
 
 @app.get("/progress")
-def get_progress():
+def get_progress(user_id: str = Depends(get_current_user)):
     """
     Get overall progress summary with individual challenge completion status
 
@@ -398,11 +468,6 @@ def get_progress():
         - current_challenge
     """
     try:
-        user = db.get_first_user_profile()
-        if not user:
-            raise HTTPException(status_code=404, detail="No user profile found")
-
-        user_id = user["id"]
         return db.get_progress_summary(user_id)
 
     except Exception as e:
@@ -411,7 +476,7 @@ def get_progress():
 
 
 @app.get("/challenges/metadata")
-def get_all_challenges_metadata():
+def get_all_challenges_metadata(user_id: str = Depends(get_current_user)):
     """
     Get all challenge titles and URAC metadata for dashboard display
 
@@ -419,11 +484,6 @@ def get_all_challenges_metadata():
         Dictionary mapping module_number to module and challenge metadata with URAC framework
     """
     try:
-        user = db.get_first_user_profile()
-        if not user:
-            raise HTTPException(status_code=404, detail="No user profile found")
-
-        user_id = user["id"]
         all_module_challenges = db.get_all_module_challenges(user_id)
 
         metadata = {}
@@ -465,42 +525,8 @@ def get_all_challenges_metadata():
         raise HTTPException(status_code=500, detail=f"Failed to get challenges metadata: {str(e)}")
 
 
-@app.delete("/reset")
-def reset_system():
-    """
-    Reset the entire system (for testing/development)
-    Deletes all user data and learning paths
-    """
-    try:
-        import os
-        db_path = "learning_system.db"
-
-        if os.path.exists(db_path):
-            os.remove(db_path)
-            print("🗑️  Deleted learning_system.db")
-
-        # Reinitialize database
-        global db
-        db = Database(db_path=db_path)
-
-        # Clear active lessons
-        global active_lessons
-        active_lessons = {}
-
-        print("✅ System reset complete")
-        return {"success": True, "message": "System reset successfully"}
-
-    except Exception as e:
-        print(f"❌ Reset failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
-
-
-# ============================================================
-# LESSON ENDPOINTS (Mastery Engine Integration)
-# ============================================================
-
 @app.post("/lesson/start", response_model=LessonResponse)
-def start_lesson(request: LessonStartRequest):
+def start_lesson(request: LessonStartRequest, user_id: str = Depends(get_current_user)):
     """
     Start an interactive lesson using the Mastery Engine.
 
@@ -515,15 +541,10 @@ def start_lesson(request: LessonStartRequest):
         LessonResponse with conversation_content, editor_content, lesson_status
     """
     try:
-        user = db.get_first_user_profile()
-        if not user:
-            raise HTTPException(status_code=404, detail="No user profile found")
-
-        user_id = user["id"]
         module_num = request.module_number
         challenge_num = request.challenge_number
 
-        print(f"\n🎓 Starting lesson: Module {module_num}, Challenge {challenge_num}")
+        print(f"\n🎓 Starting lesson for user {user_id[:8]}: Module {module_num}, Challenge {challenge_num}")
 
         # Validate sequential access
         if challenge_num > 1:
@@ -653,7 +674,7 @@ def start_lesson(request: LessonStartRequest):
 
 
 @app.post("/lesson/respond", response_model=LessonResponse)
-def respond_to_lesson(request: LessonRespondRequest):
+def respond_to_lesson(request: LessonRespondRequest, user_id: str = Depends(get_current_user)):
     """
     Process user response in an active lesson.
 
@@ -667,16 +688,11 @@ def respond_to_lesson(request: LessonRespondRequest):
         LessonResponse with conversation_content, editor_content, lesson_status
     """
     try:
-        user = db.get_first_user_profile()
-        if not user:
-            raise HTTPException(status_code=404, detail="No user profile found")
-
-        user_id = user["id"]
         module_num = request.module_number
         challenge_num = request.challenge_number
         user_input = request.user_input
 
-        print(f"\n📝 Processing response: Module {module_num}, Challenge {challenge_num}")
+        print(f"\n📝 Processing response for user {user_id[:8]}: Module {module_num}, Challenge {challenge_num}")
         print(f"   User input: {user_input[:100]}..." if len(user_input) > 100 else f"   User input: {user_input}")
 
         # Get active lesson engine
@@ -734,6 +750,74 @@ def respond_to_lesson(request: LessonRespondRequest):
         raise HTTPException(status_code=500, detail=f"Failed to process response: {str(e)}")
 
 
+# ============================================================
+# USER DATA MANAGEMENT
+# ============================================================
+
+@app.post("/reset")
+def reset_user_data(user_id: str = Depends(get_current_user)):
+    """
+    Reset user's learning path data to start fresh.
+    Deletes learning path, module challenges, and progress.
+    Keeps user profile.
+
+    Returns:
+        - success: True if reset completed
+    """
+    try:
+        print(f"🔄 Resetting data for user {user_id[:8]}...")
+
+        # Delete in correct order due to dependencies
+        db.delete_user_progress(user_id)
+        db.delete_user_module_challenges(user_id)
+        db.delete_user_learning_path(user_id)
+
+        # Clean up any active lessons for this user
+        keys_to_delete = [key for key in active_lessons.keys() if key[0] == user_id]
+        for key in keys_to_delete:
+            del active_lessons[key]
+
+        print(f"✅ User data reset successfully")
+
+        return {
+            "success": True,
+            "message": "Learning path and progress reset. You can now create a new learning path."
+        }
+
+    except Exception as e:
+        print(f"❌ Reset failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Reset failed: {str(e)}")
+
+
+# ============================================================
+# ADMIN ENDPOINTS
+# ============================================================
+
+@app.get("/admin/stats")
+def get_admin_stats(user_id: str = Depends(get_current_user)):
+    """
+    Get admin statistics (token usage, user activity)
+
+    Returns:
+        Admin dashboard data with token usage and user stats
+    """
+    try:
+        # Check if user is admin
+        if not db.is_admin(user_id):
+            raise HTTPException(status_code=403, detail="Admin access required")
+
+        # Get statistics
+        stats = db.get_admin_statistics()
+        return stats
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Failed to get admin stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get admin stats: {str(e)}")
+
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

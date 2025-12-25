@@ -35,7 +35,7 @@ class ModulePlannerAgent:
         self.model_provider = model_provider.lower()
 
         if self.model_provider == "gemini":
-            self.model_name = "gemini-flash-latest"
+            self.model_name = "gemini-3-flash-preview"
             self.client = self._setup_gemini()
         elif self.model_provider == "groq":
             self.model_name = "openai/gpt-oss-120b"
@@ -127,7 +127,7 @@ You must output a single valid JSON object following this schema:
 ```json
 {
   "module_id": module_order
-  "module_context_bridge": "<Instruction: For the first module, connect to the User's Baseline. For subsequent modules, connect to recently Acquired Knowledge (and optionally baseline). Write directly to the user explaining what they already know that will help them with this module.>",
+  "module_context_bridge": "<Write a 2-3 sentence story continuation. For Chapter 1, connect to where the user is starting from. For later chapters, reference what they accomplished previously and what they'll unlock next. Address the user directly.>",
   "lesson_plan": [
     {
       "sequence": 1,
@@ -148,18 +148,25 @@ You must output a single valid JSON object following this schema:
 """
 
         acquired_knowledge_str = "\n".join([f"- {comp}" for comp in acquired_knowledge_history]) if acquired_knowledge_history else "None (this is the first module)"
+        chapter_num = current_module.get('chapter')
+        title = current_module.get('title')
+        outcome = current_module.get('outcome')
+        concepts = current_module.get('concepts')
+        practice = current_module.get('practice')
+        unlocks = current_module.get('unlocks')
 
         user_prompt = f"""<user_input>
 User Baseline: {user_baseline}
 
 User Objective: {user_objective}
 
-Current Module:
-Title: {current_module.get('title', 'N/A')}
-Competency Goal: {current_module.get('competency_goal', 'N/A')}
-Mental Map: {json.dumps(current_module.get('mental_map', []), indent=2)}
-Application: {json.dumps(current_module.get('application', []), indent=2)}
-Relevance to Goal: {current_module.get('relevance_to_goal', 'N/A')}
+Current Chapter:
+Chapter: {chapter_num}
+Title: {title}
+Outcome: {outcome}
+Concepts: {json.dumps(concepts, indent=2)}
+Practice: {json.dumps(practice, indent=2)}
+Unlocks: {unlocks}
 
 Acquired Knowledge History:
 {acquired_knowledge_str}

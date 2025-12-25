@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import NeuralPathway from '../components/NeuralPathway';
 
 function PathApprovalPage({ sessionState, onComplete, viewOnly = false }) {
   const [loading, setLoading] = useState(false);
@@ -91,19 +92,12 @@ function PathApprovalPage({ sessionState, onComplete, viewOnly = false }) {
   };
 
   const learningPath = sessionState?.learning_path;
-  // Use 'curriculum' from the learning path format
-  const modules = learningPath?.learning_path?.curriculum || [];
+  // Support both old (curriculum) and new (chapters) schema
+  const learningPathContent = learningPath?.learning_path || {};
+  const chapters = learningPathContent?.chapters || learningPathContent?.curriculum || [];
+  const journeyTitle = learningPathContent?.journey?.title || 'Your Learning Path';
 
-  // Expanded debug to see actual structure
-  if (modules.length > 0) {
-    console.log('DEBUG First Module Structure:', modules[0]);
-  }
-  console.log('DEBUG PathApprovalPage:', {
-    sessionState,
-    learningPath,
-    modules,
-    modulesLength: modules.length
-  });
+  console.log('DEBUG PathApprovalPage:', { chapters: chapters.length });
   const handleApprove = async () => {
     setLoading(true);
     setError(null);
@@ -461,7 +455,7 @@ function PathApprovalPage({ sessionState, onComplete, viewOnly = false }) {
         position: 'relative', zIndex: 10, minHeight: '100vh'
       }}>
         {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: '48px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '0' }}>
           {viewOnly && (
             <button
               onClick={() => navigate('/dashboard')}
@@ -489,129 +483,28 @@ function PathApprovalPage({ sessionState, onComplete, viewOnly = false }) {
           )}
 
           <h1 style={{
-            fontSize: '48px', fontWeight: 700, letterSpacing: '-0.03em',
-            marginBottom: '16px', lineHeight: 1.1
+            fontSize: '38px', fontWeight: 700, letterSpacing: '-0.025em',
+            marginBottom: '0', lineHeight: 1.2
           }}>
             <span style={{
               display: 'inline-block',
-              backgroundImage: 'linear-gradient(135deg, #e8e8e8 0%, #b4a0e5 50%, #8b8bda 100%)',
+              backgroundImage: 'linear-gradient(135deg, #ffffff 0%, #c4b5fd 50%, #a78bfa 100%)',
               WebkitBackgroundClip: 'text',
               backgroundClip: 'text',
               WebkitTextFillColor: 'transparent'
             }}>
-              {viewOnly ? 'Your Learning Path' : 'Review Learning Path'}
+              {journeyTitle}
             </span>
           </h1>
-          <p style={{
-            fontSize: '17px', color: 'rgba(255,255,255,0.45)',
-            maxWidth: '600px', margin: '0 auto'
-          }}>
-            {modules.length} modules tailored for your Learning Journey
-          </p>
         </div>
 
-        {/* Modules list */}
+        {/* Neural Pathway */}
         <div style={{
-          display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '40px',
-          position: 'relative', zIndex: 10
+          marginBottom: '40px',
+          position: 'relative',
+          zIndex: 10
         }}>
-          {modules.map((module) => (
-            <div
-              key={module.module_order}
-              className="module-card"
-              style={{
-                position: 'relative', borderRadius: '16px', padding: '28px',
-                background: 'linear-gradient(180deg, rgba(20,20,28,1) 0%, rgba(15,15,22,1) 100%)',
-                border: '1px solid rgba(255,255,255,0.08)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseOver={(e) => {
-                e.currentTarget.style.border = '1px solid rgba(139,92,246,0.3)';
-                e.currentTarget.style.boxShadow = '0 12px 40px rgba(139,92,246,0.15)';
-              }}
-              onMouseOut={(e) => {
-                e.currentTarget.style.border = '1px solid rgba(255,255,255,0.08)';
-                e.currentTarget.style.boxShadow = '0 8px 32px rgba(0,0,0,0.4)';
-              }}
-            >
-              {/* Inner highlight */}
-              <div style={{
-                position: 'absolute', inset: 0, borderRadius: '16px',
-                background: 'linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 40%)',
-                pointerEvents: 'none'
-              }} />
-
-              <div style={{ position: 'relative' }}>
-                {/* Module header */}
-                <div style={{ marginBottom: '16px' }}>
-                  <span style={{
-                    display: 'inline-block', padding: '4px 12px', borderRadius: '20px',
-                    background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)',
-                    fontSize: '12px', fontWeight: 600, color: '#c4b5fd', marginBottom: '12px'
-                  }}>
-                    Module {module.module_order}
-                  </span>
-                  <h3 style={{
-                    fontSize: '20px', fontWeight: 600, marginBottom: '8px',
-                    color: '#ffffff', letterSpacing: '-0.01em'
-                  }}>
-                    {module.title}
-                  </h3>
-                  <p style={{
-                    fontSize: '15px', color: 'rgba(255,255,255,0.5)',
-                    lineHeight: 1.6
-                  }}>
-                    {module.competency_goal}
-                  </p>
-                </div>
-
-                {/* Topics & Hands-on in columns */}
-                <div style={{
-                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px',
-                  marginTop: '20px', paddingTop: '20px',
-                  borderTop: '1px solid rgba(255,255,255,0.06)'
-                }}>
-                  <div>
-                    <h4 style={{
-                      fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.5)',
-                      textTransform: 'uppercase', letterSpacing: '0.05em',
-                      marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px'
-                    }}>
-                      <svg style={{ width: '14px', height: '14px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
-                      </svg>
-                      Mental Map
-                    </h4>
-                    <div style={{
-                      fontSize: '14px', color: 'rgba(255,255,255,0.7)',
-                      lineHeight: 1.8
-                    }}>
-                      {renderContent(module.mental_map)}
-                    </div>
-                  </div>
-                  <div>
-                    <h4 style={{
-                      fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.5)',
-                      textTransform: 'uppercase', letterSpacing: '0.05em',
-                      marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px'
-                    }}>
-                      <svg style={{ width: '14px', height: '14px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
-                      </svg>
-                      Application
-                    </h4>
-                    <div style={{
-                      fontSize: '14px', color: 'rgba(255,255,255,0.7)',
-                      lineHeight: 1.8
-                    }}>
-                      {renderContent(module.application)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
+          <NeuralPathway learningPath={learningPathContent} />
         </div>
 
         {/* Error message */}

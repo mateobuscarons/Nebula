@@ -1,16 +1,33 @@
 /**
- * API Service - Backend communication layer
- * Base URL: http://localhost:8000
+ * API Service - Backend communication layer with authentication
  */
 
-const API_BASE = 'http://localhost:8000';
+import { supabase } from '../lib/supabase';
 
-// Helper function for fetch with error handling
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+// Get auth headers with current user token
+async function getAuthHeaders() {
+  const { data: { session } } = await supabase.auth.getSession();
+
+  if (!session) {
+    throw new Error('Not authenticated');
+  }
+
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${session.access_token}`
+  };
+}
+
+// Helper function for fetch with error handling and auth
 async function apiCall(endpoint, options = {}) {
   try {
+    const headers = await getAuthHeaders();
+
     const response = await fetch(`${API_BASE}${endpoint}`, {
       headers: {
-        'Content-Type': 'application/json',
+        ...headers,
         ...options.headers,
       },
       ...options,
@@ -30,9 +47,9 @@ async function apiCall(endpoint, options = {}) {
 
 // API Methods
 export const api = {
-  // Health check
+  // Health check (no auth required)
   async healthCheck() {
-    return apiCall('/');
+    return fetch(`${API_BASE}/`).then(r => r.json());
   },
 
   // Get session state
@@ -82,11 +99,6 @@ export const api = {
     return apiCall('/challenges/metadata');
   },
 
-  // Reset system (for testing)
-  async reset() {
-    return apiCall('/reset', { method: 'DELETE' });
-  },
-
   // Start a lesson (Mastery Engine)
   async startLesson(moduleNumber, challengeNumber) {
     return apiCall('/lesson/start', {
@@ -107,6 +119,18 @@ export const api = {
         challenge_number: challengeNumber,
         user_input: userInput,
       }),
+    });
+  },
+
+  // Admin: Get statistics
+  async getAdminStats() {
+    return apiCall('/admin/stats');
+  },
+
+  // Reset user data (learning path, progress)
+  async reset() {
+    return apiCall('/reset', {
+      method: 'POST',
     });
   },
 };

@@ -11,3 +11,6 @@ uvicorn==0.34.0
 pydantic>=2.12.4
 groq>=0.11.0
 langchain-groq
+# PostgreSQL and Supabase (NEW - for multi-tenant database)
+psycopg2-binary>=2.9.9
+supabase>=2.9.0

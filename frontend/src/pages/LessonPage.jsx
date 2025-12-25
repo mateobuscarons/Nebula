@@ -1,11 +1,239 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useId, memo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import mermaid from 'mermaid';
+import 'katex/dist/katex.min.css';
+
+// Initialize mermaid with dark theme
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    primaryColor: '#8b5cf6',
+    primaryTextColor: '#fff',
+    primaryBorderColor: '#6366f1',
+    lineColor: '#6366f1',
+    secondaryColor: '#1e1b4b',
+    tertiaryColor: '#0f0f23',
+    background: '#0a0a12',
+    mainBkg: '#1a1a2e',
+    nodeBorder: '#6366f1',
+    clusterBkg: 'rgba(139,92,246,0.1)',
+    titleColor: '#fff',
+    edgeLabelBackground: '#1a1a2e',
+  },
+  flowchart: {
+    curve: 'basis',
+    padding: 20,
+  },
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+});
+
+// Memoized markdown components to prevent recreation on every render
+const markdownComponents = {
+  code({ node, inline, className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className || '');
+    const language = match ? match[1] : '';
+    const isBlock = !inline && (match || String(children).includes('\n'));
+    const codeContent = String(children).replace(/\n$/, '');
+
+    // Handle Mermaid diagrams
+    if (language === 'mermaid' && isBlock) {
+      return <MermaidDiagram chart={codeContent} />;
+    }
+
+    if (isBlock) {
+      return (
+        <SyntaxHighlighter
+          style={oneDark}
+          language={language || 'text'}
+          PreTag="div"
+          customStyle={{
+            margin: '16px 0',
+            borderRadius: '8px',
+            fontSize: '13px',
+            padding: '16px'
+          }}
+          {...props}
+        >
+          {codeContent}
+        </SyntaxHighlighter>
+      );
+    }
+
+    return (
+      <code
+        style={{
+          background: 'rgba(139,92,246,0.15)',
+          padding: '2px 6px',
+          borderRadius: '4px',
+          fontSize: '14px',
+          color: '#c4b5fd'
+        }}
+        {...props}
+      >
+        {children}
+      </code>
+    );
+  },
+  p: ({ children }) => <p style={{ marginBottom: '16px' }}>{children}</p>,
+  h1: ({ children }) => <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '16px', color: '#fff' }}>{children}</h1>,
+  h2: ({ children }) => <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '12px', color: '#fff' }}>{children}</h2>,
+  h3: ({ children }) => <h3 style={{ fontSize: '17px', fontWeight: 600, marginBottom: '10px', color: '#fff' }}>{children}</h3>,
+  ul: ({ children }) => <ul style={{ marginBottom: '16px', paddingLeft: '24px' }}>{children}</ul>,
+  ol: ({ children }) => <ol style={{ marginBottom: '16px', paddingLeft: '24px' }}>{children}</ol>,
+  li: ({ children }) => <li style={{ marginBottom: '8px' }}>{children}</li>,
+  blockquote: ({ children }) => (
+    <blockquote style={{
+      borderLeft: '3px solid #8b5cf6',
+      paddingLeft: '16px',
+      padding: '12px 16px',
+      margin: '20px 0',
+      background: 'rgba(139,92,246,0.08)',
+      borderRadius: '0 8px 8px 0',
+      color: 'rgba(255,255,255,0.85)',
+    }}>
+      {children}
+    </blockquote>
+  ),
+  table: ({ children }) => (
+    <div style={{ overflowX: 'auto', margin: '20px 0' }}>
+      <table style={{
+        width: '100%',
+        borderCollapse: 'collapse',
+        fontSize: '14px',
+        background: 'rgba(10,10,18,0.6)',
+        borderRadius: '8px',
+        overflow: 'hidden',
+      }}>
+        {children}
+      </table>
+    </div>
+  ),
+  thead: ({ children }) => (
+    <thead style={{
+      background: 'rgba(139,92,246,0.15)',
+      borderBottom: '1px solid rgba(139,92,246,0.3)',
+    }}>
+      {children}
+    </thead>
+  ),
+  th: ({ children }) => (
+    <th style={{
+      padding: '12px 16px',
+      textAlign: 'left',
+      fontWeight: 600,
+      color: '#c4b5fd',
+      fontSize: '13px',
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em',
+    }}>
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td style={{
+      padding: '12px 16px',
+      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      color: 'rgba(255,255,255,0.8)',
+    }}>
+      {children}
+    </td>
+  ),
+  tr: ({ children }) => (
+    <tr style={{
+      transition: 'background 0.2s',
+    }}>
+      {children}
+    </tr>
+  ),
+  strong: ({ children }) => <strong style={{ color: '#fff', fontWeight: 600 }}>{children}</strong>,
+  em: ({ children }) => <em style={{ color: 'rgba(255,255,255,0.9)', fontStyle: 'italic' }}>{children}</em>,
+  hr: () => <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '24px 0' }} />,
+  pre: ({ children }) => <>{children}</>,
+};
+
+// Memoized conversation content to prevent re-renders when typing
+const ConversationContent = memo(function ConversationContent({ content }) {
+  return (
+    <div className="markdown-content" style={{
+      fontSize: '15px', lineHeight: 1.7, color: 'rgba(255,255,255,0.85)'
+    }}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={markdownComponents}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+});
+
+// Mermaid diagram component - memoized to prevent re-renders when parent state changes
+const MermaidDiagram = memo(function MermaidDiagram({ chart }) {
+  const containerRef = useRef(null);
+  const uniqueId = useId().replace(/:/g, '_');
+  const [svg, setSvg] = useState('');
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const renderChart = async () => {
+      if (!chart) return;
+
+      try {
+        setError(null);
+        const { svg: renderedSvg } = await mermaid.render(`mermaid-${uniqueId}`, chart);
+        setSvg(renderedSvg);
+      } catch (err) {
+        console.error('Mermaid render error:', err);
+        setError(err.message);
+      }
+    };
+
+    renderChart();
+  }, [chart, uniqueId]);
+
+  if (error) {
+    return (
+      <div style={{
+        padding: '16px',
+        background: 'rgba(239,68,68,0.1)',
+        border: '1px solid rgba(239,68,68,0.3)',
+        borderRadius: '8px',
+        color: '#ef4444',
+        fontSize: '13px',
+        margin: '16px 0'
+      }}>
+        <strong>Diagram Error:</strong> {error}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        margin: '20px 0',
+        padding: '16px',
+        background: 'rgba(139,92,246,0.05)',
+        border: '1px solid rgba(139,92,246,0.2)',
+        borderRadius: '12px',
+        overflow: 'auto',
+        display: 'flex',
+        justifyContent: 'center',
+      }}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+});
 
 // Strip markdown syntax from text for plain text display
 const stripMarkdown = (text) => {
@@ -124,14 +352,29 @@ function LessonPage({ onComplete }) {
   };
 
   const handleBackToDashboard = () => {
-    if (onComplete) onComplete();
+    // Only refresh/clear cache if lesson was completed (progress changed)
+    if (onComplete && lessonStatus.current_phase === 'COMPLETED') {
+      onComplete();
+    }
     navigate('/dashboard');
   };
 
   const isCompleted = lessonStatus.current_phase === 'COMPLETED';
 
-  // Phase indicator
-  const phases = ['TEACHING', 'APPLICATION', 'CONNECT', 'COMPLETED'];
+  // Phase indicator - 4-phase structure
+  const phases = ['ENGAGE', 'DEEPEN', 'APPLY', 'COMPLETED'];
+  const phaseLabels = {
+    'ENGAGE': 'Warm Up',
+    'DEEPEN': 'Understand',
+    'APPLY': 'Apply',
+    'COMPLETED': 'Done'
+  };
+  const phaseIcons = {
+    'ENGAGE': '👋',
+    'DEEPEN': '🧠',
+    'APPLY': '🔧',
+    'COMPLETED': '✓'
+  };
   const currentPhaseIndex = phases.indexOf(lessonStatus.current_phase);
 
   if (loading) {
@@ -255,32 +498,53 @@ function LessonPage({ onComplete }) {
 
         {/* Phase indicator & back button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-          {/* Phase dots */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Phase progress indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             {phases.slice(0, -1).map((phase, idx) => (
-              <div key={phase} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div key={phase} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                 <div style={{
-                  width: '8px', height: '8px', borderRadius: '50%',
-                  background: idx < currentPhaseIndex ? '#6ee7b7' :
-                    idx === currentPhaseIndex ? '#8b5cf6' : 'rgba(255,255,255,0.2)',
-                  boxShadow: idx === currentPhaseIndex ? '0 0 8px rgba(139,92,246,0.6)' : 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 10px',
+                  borderRadius: '12px',
+                  background: idx < currentPhaseIndex
+                    ? 'rgba(110,231,183,0.15)'
+                    : idx === currentPhaseIndex
+                      ? 'rgba(139,92,246,0.2)'
+                      : 'rgba(255,255,255,0.05)',
+                  border: idx === currentPhaseIndex
+                    ? '1px solid rgba(139,92,246,0.4)'
+                    : '1px solid transparent',
                   transition: 'all 0.3s'
-                }} />
+                }}>
+                  <div style={{
+                    width: '6px', height: '6px', borderRadius: '50%',
+                    background: idx < currentPhaseIndex ? '#6ee7b7' :
+                      idx === currentPhaseIndex ? '#8b5cf6' : 'rgba(255,255,255,0.3)',
+                    boxShadow: idx === currentPhaseIndex ? '0 0 6px rgba(139,92,246,0.6)' : 'none',
+                  }} />
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 500,
+                    color: idx < currentPhaseIndex
+                      ? '#6ee7b7'
+                      : idx === currentPhaseIndex
+                        ? '#c4b5fd'
+                        : 'rgba(255,255,255,0.4)',
+                    letterSpacing: '0.02em'
+                  }}>
+                    {phaseLabels[phase]}
+                  </span>
+                </div>
                 {idx < phases.length - 2 && (
                   <div style={{
-                    width: '24px', height: '2px',
-                    background: idx < currentPhaseIndex ? '#6ee7b7' : 'rgba(255,255,255,0.1)'
+                    width: '12px', height: '1px',
+                    background: idx < currentPhaseIndex ? '#6ee7b7' : 'rgba(255,255,255,0.15)'
                   }} />
                 )}
               </div>
             ))}
-            <span style={{
-              marginLeft: '8px', fontSize: '12px', fontWeight: 600,
-              color: isCompleted ? '#6ee7b7' : '#c4b5fd',
-              textTransform: 'uppercase', letterSpacing: '0.05em'
-            }}>
-              {lessonStatus.current_phase || 'Loading'}
-            </span>
           </div>
 
           <button
@@ -399,77 +663,7 @@ function LessonPage({ onComplete }) {
                 {error}
               </div>
             )}
-            <div className="markdown-content" style={{
-              fontSize: '15px', lineHeight: 1.7, color: 'rgba(255,255,255,0.85)'
-            }}>
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  code({ node, inline, className, children, ...props }) {
-                    const match = /language-(\w+)/.exec(className || '');
-                    const isBlock = !inline && (match || String(children).includes('\n'));
-
-                    if (isBlock) {
-                      return (
-                        <SyntaxHighlighter
-                          style={oneDark}
-                          language={match ? match[1] : 'text'}
-                          PreTag="div"
-                          customStyle={{
-                            margin: '16px 0',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            padding: '16px'
-                          }}
-                          {...props}
-                        >
-                          {String(children).replace(/\n$/, '')}
-                        </SyntaxHighlighter>
-                      );
-                    }
-
-                    return (
-                      <code
-                        style={{
-                          background: 'rgba(139,92,246,0.15)',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          fontSize: '14px',
-                          color: '#c4b5fd'
-                        }}
-                        {...props}
-                      >
-                        {children}
-                      </code>
-                    );
-                  },
-                  p: ({ children }) => <p style={{ marginBottom: '16px' }}>{children}</p>,
-                  h1: ({ children }) => <h1 style={{ fontSize: '24px', fontWeight: 700, marginBottom: '16px', color: '#fff' }}>{children}</h1>,
-                  h2: ({ children }) => <h2 style={{ fontSize: '20px', fontWeight: 600, marginBottom: '12px', color: '#fff' }}>{children}</h2>,
-                  h3: ({ children }) => <h3 style={{ fontSize: '17px', fontWeight: 600, marginBottom: '10px', color: '#fff' }}>{children}</h3>,
-                  ul: ({ children }) => <ul style={{ marginBottom: '16px', paddingLeft: '24px' }}>{children}</ul>,
-                  ol: ({ children }) => <ol style={{ marginBottom: '16px', paddingLeft: '24px' }}>{children}</ol>,
-                  li: ({ children }) => <li style={{ marginBottom: '8px' }}>{children}</li>,
-                  blockquote: ({ children }) => (
-                    <blockquote style={{
-                      borderLeft: '3px solid #8b5cf6',
-                      paddingLeft: '16px',
-                      margin: '16px 0',
-                      color: 'rgba(255,255,255,0.7)',
-                      fontStyle: 'italic'
-                    }}>
-                      {children}
-                    </blockquote>
-                  ),
-                  strong: ({ children }) => <strong style={{ color: '#fff', fontWeight: 600 }}>{children}</strong>,
-                  em: ({ children }) => <em style={{ color: 'rgba(255,255,255,0.9)', fontStyle: 'italic' }}>{children}</em>,
-                  hr: () => <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '24px 0' }} />,
-                  pre: ({ children }) => <>{children}</>,
-                }}
-              >
-                {currentResponse}
-              </ReactMarkdown>
-            </div>
+            <ConversationContent content={currentResponse} />
           </div>
         </div>
 
@@ -537,7 +731,13 @@ function LessonPage({ onComplete }) {
                   value={editorContent}
                   onChange={(e) => setEditorContent(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Type your answer here..."
+                  placeholder={
+                    lessonStatus.current_phase === 'ENGAGE'
+                      ? "Type your answer..."
+                      : lessonStatus.current_phase === 'DEEPEN'
+                        ? "Explain your reasoning..."
+                        : "Type your solution here..."
+                  }
                   style={{
                     width: '100%',
                     minHeight: '200px',
