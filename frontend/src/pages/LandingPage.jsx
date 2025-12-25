@@ -14,6 +14,122 @@ export default function LandingPage() {
 
   return (
     <div className="landing-page">
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 0.6; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.1); }
+        }
+        .pulse-1 { animation: pulse 8s ease-in-out infinite; }
+        .pulse-2 { animation: pulse 10s ease-in-out infinite; }
+      `}</style>
+
+      {/* Neural network background */}
+      <svg style={{
+        position: 'fixed', inset: 0, width: '100%', height: '100%',
+        pointerEvents: 'none', zIndex: 1, opacity: 0.6
+      }}>
+        <defs>
+          <radialGradient id="neuronGlow">
+            <stop offset="0%" style={{ stopColor: 'rgba(139,92,246,0.8)', stopOpacity: 1 }} />
+            <stop offset="50%" style={{ stopColor: 'rgba(139,92,246,0.3)', stopOpacity: 0.5 }} />
+            <stop offset="100%" style={{ stopColor: 'rgba(139,92,246,0)', stopOpacity: 0 }} />
+          </radialGradient>
+          <radialGradient id="neuronGlow2">
+            <stop offset="0%" style={{ stopColor: 'rgba(99,102,241,0.8)', stopOpacity: 1 }} />
+            <stop offset="50%" style={{ stopColor: 'rgba(99,102,241,0.3)', stopOpacity: 0.5 }} />
+            <stop offset="100%" style={{ stopColor: 'rgba(99,102,241,0)', stopOpacity: 0 }} />
+          </radialGradient>
+          <linearGradient id="synapseGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" style={{ stopColor: 'rgba(139,92,246,0)', stopOpacity: 0 }} />
+            <stop offset="50%" style={{ stopColor: 'rgba(139,92,246,0.4)', stopOpacity: 1 }} />
+            <stop offset="100%" style={{ stopColor: 'rgba(139,92,246,0)', stopOpacity: 0 }} />
+          </linearGradient>
+        </defs>
+
+        {/* Synaptic connections */}
+        <g className="pulse-1">
+          <line x1="5%" y1="15%" x2="18%" y2="8%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.6" />
+          <line x1="18%" y1="8%" x2="32%" y2="12%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.5" />
+          <line x1="32%" y1="12%" x2="48%" y2="18%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.6" />
+          <line x1="48%" y1="18%" x2="65%" y2="10%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.5" />
+          <line x1="65%" y1="10%" x2="82%" y2="16%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.6" />
+          <line x1="82%" y1="16%" x2="92%" y2="25%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.5" />
+        </g>
+
+        <g className="pulse-2">
+          <line x1="12%" y1="75%" x2="28%" y2="82%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.5" />
+          <line x1="28%" y1="82%" x2="46%" y2="78%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.6" />
+          <line x1="46%" y1="78%" x2="63%" y2="85%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.5" />
+          <line x1="63%" y1="85%" x2="80%" y2="80%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.6" />
+          <line x1="80%" y1="80%" x2="94%" y2="88%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.5" />
+        </g>
+
+        <g className="pulse-1" style={{ animationDelay: '1s' }}>
+          <line x1="8%" y1="45%" x2="25%" y2="52%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.5" />
+          <line x1="25%" y1="52%" x2="45%" y2="48%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.6" />
+          <line x1="45%" y1="48%" x2="62%" y2="55%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.5" />
+          <line x1="62%" y1="55%" x2="78%" y2="50%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.6" />
+          <line x1="78%" y1="50%" x2="90%" y2="58%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.5" />
+        </g>
+
+        <g className="pulse-2" style={{ animationDelay: '2s' }}>
+          <line x1="18%" y1="8%" x2="8%" y2="45%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.4" />
+          <line x1="32%" y1="12%" x2="25%" y2="52%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.4" />
+          <line x1="48%" y1="18%" x2="45%" y2="48%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.4" />
+          <line x1="65%" y1="10%" x2="62%" y2="55%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.4" />
+          <line x1="82%" y1="16%" x2="78%" y2="50%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.4" />
+        </g>
+
+        <g className="pulse-1" style={{ animationDelay: '3s' }}>
+          <line x1="25%" y1="52%" x2="28%" y2="82%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.4" />
+          <line x1="45%" y1="48%" x2="46%" y2="78%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.4" />
+          <line x1="62%" y1="55%" x2="63%" y2="85%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.4" />
+          <line x1="78%" y1="50%" x2="80%" y2="80%" stroke="url(#synapseGradient)" strokeWidth="1" opacity="0.4" />
+        </g>
+
+        {/* Neurons */}
+        {[
+          { x: '5%', y: '15%', delay: '0s', gradient: 'neuronGlow' },
+          { x: '18%', y: '8%', delay: '0.5s', gradient: 'neuronGlow2' },
+          { x: '32%', y: '12%', delay: '1s', gradient: 'neuronGlow' },
+          { x: '48%', y: '18%', delay: '1.5s', gradient: 'neuronGlow2' },
+          { x: '65%', y: '10%', delay: '2s', gradient: 'neuronGlow' },
+          { x: '82%', y: '16%', delay: '2.5s', gradient: 'neuronGlow2' },
+          { x: '92%', y: '25%', delay: '3s', gradient: 'neuronGlow' },
+          { x: '8%', y: '45%', delay: '0.8s', gradient: 'neuronGlow2' },
+          { x: '25%', y: '52%', delay: '1.3s', gradient: 'neuronGlow' },
+          { x: '45%', y: '48%', delay: '1.8s', gradient: 'neuronGlow2' },
+          { x: '62%', y: '55%', delay: '2.3s', gradient: 'neuronGlow' },
+          { x: '78%', y: '50%', delay: '2.8s', gradient: 'neuronGlow2' },
+          { x: '90%', y: '58%', delay: '3.3s', gradient: 'neuronGlow' },
+          { x: '12%', y: '75%', delay: '1.2s', gradient: 'neuronGlow' },
+          { x: '28%', y: '82%', delay: '1.7s', gradient: 'neuronGlow2' },
+          { x: '46%', y: '78%', delay: '2.2s', gradient: 'neuronGlow' },
+          { x: '63%', y: '85%', delay: '2.7s', gradient: 'neuronGlow2' },
+          { x: '80%', y: '80%', delay: '3.2s', gradient: 'neuronGlow' },
+          { x: '94%', y: '88%', delay: '3.7s', gradient: 'neuronGlow2' }
+        ].map((neuron, i) => (
+          <g key={i}>
+            <circle
+              cx={neuron.x}
+              cy={neuron.y}
+              r="8"
+              fill={`url(#${neuron.gradient})`}
+              className="pulse-1"
+              style={{ animationDelay: neuron.delay }}
+            />
+            <circle
+              cx={neuron.x}
+              cy={neuron.y}
+              r="2"
+              fill="rgba(255,255,255,0.9)"
+              className="pulse-2"
+              style={{ animationDelay: neuron.delay }}
+            />
+          </g>
+        ))}
+      </svg>
+
       <header className="landing-header">
         <div style={{
           width: '36px', height: '36px', borderRadius: '10px',
@@ -33,7 +149,10 @@ export default function LandingPage() {
       <main className="landing-main">
         {/* Section 1: The Hook */}
         <section className="hero-section">
-          <h2>Stop collecting knowledge. Start building mastery.</h2>
+          <h2>
+            <span className="hero-line">Stop collecting knowledge.</span>
+            <span className="hero-line">Start building mastery.</span>
+          </h2>
           <p className="subtitle">
             Most platforms optimize for your time spent. We optimize for your talent gained.
             Define your goal, and we'll design a high-precision path to get you there.
@@ -69,10 +188,6 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
-
-          <button onClick={handleSignIn} className="cta-button secondary">
-            Build my profile
-          </button>
         </section>
 
         {/* Section 3: The Problem & Solution */}
@@ -93,11 +208,10 @@ export default function LandingPage() {
             </div>
 
             <div className="col">
-              <h4>The Mastery Solution</h4>
+              <h4>The Solution</h4>
               <p>
-                We optimize for the right kind of effort. By focusing on real-world objectives and
-                providing the exact tools you need at the right moment, we turn information into instinct.
-                You won't just "know" the subject; you'll own the skill.
+                Focusing on real-world objectives and providing the exact tools you need, we turn
+                information into instinct. You won't just "know" the subject; you'll own the skill.
               </p>
             </div>
           </div>

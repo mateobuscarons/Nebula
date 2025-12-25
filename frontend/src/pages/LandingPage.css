@@ -59,9 +59,9 @@
 /* Main content */
 .landing-main {
   flex: 1;
-  max-width: 1000px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 60px 24px 100px;
+  padding: 60px 32px 100px;
   width: 100%;
   position: relative;
   z-index: 10;
@@ -79,8 +79,22 @@
   font-weight: 700;
   letter-spacing: -0.03em;
   margin-bottom: 28px;
-  line-height: 1.1;
-  background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 30%, #a78bfa 70%, #818cf8 100%);
+  line-height: 1.15;
+}
+
+.hero-line {
+  display: block;
+}
+
+.hero-line:first-child {
+  background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 50%, #c4b5fd 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero-line:last-child {
+  background: linear-gradient(135deg, #a78bfa 0%, #818cf8 50%, #6366f1 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -90,7 +104,7 @@
   font-size: 20px;
   color: rgba(255,255,255,0.6);
   margin-bottom: 48px;
-  max-width: 650px;
+  max-width: 780px;
   margin-left: auto;
   margin-right: auto;
   line-height: 1.7;
@@ -119,7 +133,7 @@
   color: rgba(255,255,255,0.55);
   margin-bottom: 56px;
   line-height: 1.7;
-  max-width: 600px;
+  max-width: 750px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -127,9 +141,12 @@
 .features-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 32px;
+  gap: 28px;
   margin-bottom: 56px;
   text-align: left;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .feature {
@@ -180,9 +197,12 @@
 .two-col {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 32px;
+  gap: 28px;
   margin-bottom: 56px;
   text-align: left;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .col {
