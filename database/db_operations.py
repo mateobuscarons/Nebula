@@ -766,12 +766,14 @@ class Database:
         Get token usage for all users (admin only)
 
         Returns:
-            List of user token usage summaries
+            List of user token usage summaries with cost breakdown
         """
         query = """
             SELECT
                 u.id as user_id,
                 u.email,
+                COALESCE(SUM(t.prompt_tokens), 0) as input_tokens,
+                COALESCE(SUM(t.completion_tokens), 0) as output_tokens,
                 COALESCE(SUM(t.total_tokens), 0) as total_tokens,
                 COUNT(DISTINCT lp.id) as paths_created,
                 COUNT(DISTINCT cp.id) FILTER (WHERE cp.status = 'completed') as lessons_completed,
@@ -793,9 +795,17 @@ class Database:
         Returns:
             Dict with total tokens, cost estimate, user breakdown, and daily usage
         """
-        # Total token usage
-        total_query = "SELECT SUM(total_tokens) as total FROM token_usage"
+        # Total token usage with input/output breakdown
+        total_query = """
+            SELECT
+                COALESCE(SUM(prompt_tokens), 0) as total_input,
+                COALESCE(SUM(completion_tokens), 0) as total_output,
+                COALESCE(SUM(total_tokens), 0) as total
+            FROM token_usage
+        """
         total_result = self._execute_query(total_query, fetch_one=True)
+        total_input_tokens = total_result['total_input'] or 0
+        total_output_tokens = total_result['total_output'] or 0
         total_tokens = total_result['total'] or 0
 
         # Per-user breakdown
@@ -814,13 +824,18 @@ class Database:
         daily_usage = self._execute_query(daily_query, fetch_all=True)
 
         # Calculate cost estimate
-        # Gemini Flash: ~$0.075 per 1M input tokens, ~$0.30 per 1M output tokens
-        # Simplified: average $0.15 per 1M tokens
-        estimated_cost = (total_tokens / 1_000_000) * 0.15
+        # Gemini pricing: $0.50 per 1M input tokens, $3.00 per 1M output tokens
+        input_cost = (total_input_tokens / 1_000_000) * 0.50
+        output_cost = (total_output_tokens / 1_000_000) * 3.00
+        estimated_cost = input_cost + output_cost
 
         return {
             'total_tokens': total_tokens,
+            'total_input_tokens': total_input_tokens,
+            'total_output_tokens': total_output_tokens,
             'estimated_cost': estimated_cost,
+            'input_cost': input_cost,
+            'output_cost': output_cost,
             'users': users,
             'daily_usage': [
                 {

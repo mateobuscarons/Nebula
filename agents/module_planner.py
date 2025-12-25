@@ -237,6 +237,18 @@ Acquired Knowledge History:
             print()
 
             lesson_plan = self._extract_json(full_response)
+
+            # Add token usage for logging
+            token_usage = None
+            if usage_metadata:
+                token_usage = {
+                    "prompt_tokens": usage_metadata.prompt_token_count,
+                    "completion_tokens": usage_metadata.candidates_token_count,
+                    "total_tokens": usage_metadata.total_token_count,
+                    "model_name": self.model_name
+                }
+            lesson_plan["token_usage"] = token_usage
+
             return lesson_plan
 
         except Exception as e:
@@ -270,13 +282,21 @@ Acquired Knowledge History:
 
             print("─" * 80 + "\n")
 
+            token_usage = None
             if hasattr(response, 'usage'):
                 usage = response.usage
                 print(f"📊 Stats:")
                 print(f"   ⏱️  Time: {duration:.2f}s")
                 print(f"   🔢 Tokens: {usage.total_tokens:,} (In: {usage.prompt_tokens:,}, Out: {usage.completion_tokens:,})\n")
+                token_usage = {
+                    "prompt_tokens": usage.prompt_tokens,
+                    "completion_tokens": usage.completion_tokens,
+                    "total_tokens": usage.total_tokens,
+                    "model_name": self.model_name
+                }
 
             lesson_plan = self._extract_json(content)
+            lesson_plan["token_usage"] = token_usage
             return lesson_plan
 
         except Exception as e:

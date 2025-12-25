@@ -163,8 +163,19 @@ User Objective: {user_goal}
 
             learning_path = self._extract_json(full_response)
 
+            # Return token usage for logging
+            token_usage = None
+            if usage_metadata:
+                token_usage = {
+                    "prompt_tokens": usage_metadata.prompt_token_count,
+                    "completion_tokens": usage_metadata.candidates_token_count,
+                    "total_tokens": usage_metadata.total_token_count,
+                    "model_name": self.model_name
+                }
+
             return {
-                "learning_path": learning_path
+                "learning_path": learning_path,
+                "token_usage": token_usage
             }
 
         except Exception as e:
@@ -274,9 +285,21 @@ Adjust the learning path based on the feedback while preserving as much of the o
             adjusted_path = self._extract_json(content)
 
             print(f"✅ Learning path adjusted: {len(adjusted_path.get('chapters', []))} chapters\n")
-            
+
+            # Return token usage for logging
+            token_usage = None
+            if hasattr(response, 'usage'):
+                usage = response.usage
+                token_usage = {
+                    "prompt_tokens": usage.prompt_tokens,
+                    "completion_tokens": usage.completion_tokens,
+                    "total_tokens": usage.total_tokens,
+                    "model_name": "llama-3.3-70b-versatile"
+                }
+
             return {
-                "learning_path": adjusted_path
+                "learning_path": adjusted_path,
+                "token_usage": token_usage
             }
 
         except Exception as e:

@@ -176,6 +176,9 @@ def get_session(user_id: str = Depends(get_current_user)):
         - path_approval: Learning path generated, awaiting approval
         - dashboard: Learning path approved, ready to view modules
     """
+    # Update last active timestamp
+    db.update_user_last_active(user_id)
+
     # Get or create user profile
     user_profile = db.get_user_profile(user_id)
 
@@ -276,7 +279,18 @@ def setup(request: SetupRequest, user_id: str = Depends(get_current_user)):
         num_chapters = len(chapters)
         print(f"✅ Learning path generated: {num_chapters} chapters")
 
-        # TODO: Log token usage here when we add tracking to agents
+        # Log token usage
+        token_usage = learning_path_result.get("token_usage")
+        if token_usage:
+            db.log_token_usage(
+                user_id=user_id,
+                agent_name="learning_path",
+                prompt_tokens=token_usage["prompt_tokens"],
+                completion_tokens=token_usage["completion_tokens"],
+                total_tokens=token_usage["total_tokens"],
+                model_name=token_usage["model_name"]
+            )
+            print(f"📊 Token usage logged: {token_usage['total_tokens']} tokens")
 
         return {
             "success": True,
@@ -340,6 +354,19 @@ def adjust_path(request: PathAdjustmentRequest, user_id: str = Depends(get_curre
         chapters = adjusted_path_content.get('chapters', adjusted_path_content.get('curriculum', []))
         num_chapters = len(chapters)
         print(f"✅ Learning path adjusted: {num_chapters} chapters")
+
+        # Log token usage
+        token_usage = adjusted_result.get("token_usage")
+        if token_usage:
+            db.log_token_usage(
+                user_id=user_id,
+                agent_name="learning_path_adjust",
+                prompt_tokens=token_usage["prompt_tokens"],
+                completion_tokens=token_usage["completion_tokens"],
+                total_tokens=token_usage["total_tokens"],
+                model_name=token_usage["model_name"]
+            )
+            print(f"📊 Token usage logged: {token_usage['total_tokens']} tokens")
 
         return {
             "success": True,
@@ -430,6 +457,18 @@ def approve_path(request: PathApprovalRequest, user_id: str = Depends(get_curren
 
             db.save_module_challenges(user_id, chapter_num, challenges_data)
             db.initialize_module_progress(user_id, chapter_num, num_challenges)
+
+            # Log token usage from module planner
+            token_usage = lesson_plan_result.get("token_usage")
+            if token_usage:
+                db.log_token_usage(
+                    user_id=user_id,
+                    agent_name="module_planner",
+                    prompt_tokens=token_usage["prompt_tokens"],
+                    completion_tokens=token_usage["completion_tokens"],
+                    total_tokens=token_usage["total_tokens"],
+                    model_name=token_usage["model_name"]
+                )
 
             # Update acquired knowledge history for next chapter
             acquired_knowledge_history.extend(
@@ -541,6 +580,9 @@ def start_lesson(request: LessonStartRequest, user_id: str = Depends(get_current
         LessonResponse with conversation_content, editor_content, lesson_status
     """
     try:
+        # Update last active timestamp
+        db.update_user_last_active(user_id)
+
         module_num = request.module_number
         challenge_num = request.challenge_number
 
@@ -650,6 +692,17 @@ def start_lesson(request: LessonStartRequest, user_id: str = Depends(get_current
         # Get initial AI response
         response = engine.start_lesson()
 
+        # Log token usage from mastery engine
+        if engine.last_token_usage:
+            db.log_token_usage(
+                user_id=user_id,
+                agent_name="mastery_engine",
+                prompt_tokens=engine.last_token_usage.get("input_tokens", 0),
+                completion_tokens=engine.last_token_usage.get("output_tokens", 0),
+                total_tokens=engine.last_token_usage.get("total_tokens", 0),
+                model_name=engine.model_name
+            )
+
         print(f"   ✅ Lesson started, phase: {response.get('lesson_status', {}).get('current_phase', 'UNKNOWN')}")
 
         return LessonResponse(
@@ -688,6 +741,9 @@ def respond_to_lesson(request: LessonRespondRequest, user_id: str = Depends(get_
         LessonResponse with conversation_content, editor_content, lesson_status
     """
     try:
+        # Update last active timestamp
+        db.update_user_last_active(user_id)
+
         module_num = request.module_number
         challenge_num = request.challenge_number
         user_input = request.user_input
@@ -707,6 +763,17 @@ def respond_to_lesson(request: LessonRespondRequest, user_id: str = Depends(get_
 
         # Process user input
         response = engine.process_user_input(user_input)
+
+        # Log token usage from mastery engine
+        if engine.last_token_usage:
+            db.log_token_usage(
+                user_id=user_id,
+                agent_name="mastery_engine",
+                prompt_tokens=engine.last_token_usage.get("input_tokens", 0),
+                completion_tokens=engine.last_token_usage.get("output_tokens", 0),
+                total_tokens=engine.last_token_usage.get("total_tokens", 0),
+                model_name=engine.model_name
+            )
 
         # Check if lesson is completed
         lesson_status = response.get("lesson_status", {})

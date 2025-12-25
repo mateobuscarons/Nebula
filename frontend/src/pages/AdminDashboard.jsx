@@ -63,12 +63,17 @@ export default function AdminDashboard() {
           <div className="summary-card">
             <h3>Total Tokens Used</h3>
             <p className="big-number">{stats?.total_tokens?.toLocaleString() || 0}</p>
+            <p className="sub-text">
+              In: {stats?.total_input_tokens?.toLocaleString() || 0} | Out: {stats?.total_output_tokens?.toLocaleString() || 0}
+            </p>
           </div>
 
           <div className="summary-card">
             <h3>Estimated Cost</h3>
             <p className="big-number">${(stats?.estimated_cost || 0).toFixed(4)}</p>
-            <p className="sub-text">~$0.15 per 1M tokens</p>
+            <p className="sub-text">
+              In: ${(stats?.input_cost || 0).toFixed(4)} | Out: ${(stats?.output_cost || 0).toFixed(4)}
+            </p>
           </div>
 
           <div className="summary-card">
@@ -85,30 +90,42 @@ export default function AdminDashboard() {
               <thead>
                 <tr>
                   <th>Email</th>
-                  <th>Total Tokens</th>
-                  <th>Paths Created</th>
-                  <th>Lessons Completed</th>
+                  <th>Tokens (In/Out)</th>
+                  <th>Est. Cost</th>
+                  <th>Paths</th>
+                  <th>Lessons</th>
                   <th>Last Active</th>
                 </tr>
               </thead>
               <tbody>
-                {stats?.users?.map(user => (
-                  <tr key={user.user_id}>
-                    <td>{user.email || 'Unknown'}</td>
-                    <td>{(user.total_tokens || 0).toLocaleString()}</td>
-                    <td>{user.paths_created || 0}</td>
-                    <td>{user.lessons_completed || 0}</td>
-                    <td>
-                      {user.last_active ?
-                        new Date(user.last_active).toLocaleDateString() :
-                        'Never'
-                      }
-                    </td>
-                  </tr>
-                ))}
+                {stats?.users?.map(user => {
+                  const inputCost = ((user.input_tokens || 0) / 1_000_000) * 0.50;
+                  const outputCost = ((user.output_tokens || 0) / 1_000_000) * 3.00;
+                  const totalCost = inputCost + outputCost;
+                  return (
+                    <tr key={user.user_id}>
+                      <td>{user.email || 'Unknown'}</td>
+                      <td>
+                        {(user.total_tokens || 0).toLocaleString()}
+                        <span className="token-breakdown">
+                          {(user.input_tokens || 0).toLocaleString()} / {(user.output_tokens || 0).toLocaleString()}
+                        </span>
+                      </td>
+                      <td>${totalCost.toFixed(4)}</td>
+                      <td>{user.paths_created || 0}</td>
+                      <td>{user.lessons_completed || 0}</td>
+                      <td>
+                        {user.last_active ?
+                          new Date(user.last_active).toLocaleDateString() :
+                          'Never'
+                        }
+                      </td>
+                    </tr>
+                  );
+                })}
                 {(!stats?.users || stats.users.length === 0) && (
                   <tr>
-                    <td colSpan="5" style={{textAlign: 'center', padding: '40px', color: '#999'}}>
+                    <td colSpan="6" style={{textAlign: 'center', padding: '40px', color: '#999'}}>
                       No user activity yet
                     </td>
                   </tr>
