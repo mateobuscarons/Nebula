@@ -608,16 +608,16 @@ function LessonPage({ onComplete }) {
         </div>
       </div>
 
-      {/* Main content - centered lesson */}
+      {/* Main content - lesson on left, sources on right */}
       <div style={{
-        maxWidth: '950px',
-        margin: '0 auto',
-        padding: '100px 40px 40px',
+        marginRight: sources.length > 0 || sourcesLoading ? '340px' : '40px',
+        marginLeft: '40px',
+        padding: '100px 0 40px',
         position: 'relative',
         zIndex: 10
       }}>
         {/* Lesson content */}
-        <div style={{ width: '100%' }}>
+        <div style={{ width: '100%', maxWidth: '1000px' }}>
         {/* Completion banner */}
         {isCompleted && (
           <div style={{
