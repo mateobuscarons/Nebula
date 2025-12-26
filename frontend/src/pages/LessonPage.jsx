@@ -273,7 +273,12 @@ function LessonPage({ onComplete }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
-  // Start lesson on mount
+  // Source attributions state (Trust Layer)
+  const [sources, setSources] = useState([]);
+  const [sourcesLoading, setSourcesLoading] = useState(true);
+  const [sourcesError, setSourcesError] = useState(null);
+
+  // Start lesson on mount - fetch lesson and sources in parallel
   useEffect(() => {
     startLesson();
   }, [moduleNumber, challengeNumber]);
@@ -281,17 +286,47 @@ function LessonPage({ onComplete }) {
   const startLesson = async () => {
     try {
       setLoading(true);
+      setSourcesLoading(true);
       setError(null);
-      const response = await api.startLesson(
-        parseInt(moduleNumber),
-        parseInt(challengeNumber)
-      );
-      handleResponse(response);
+      setSourcesError(null);
+
+      const modNum = parseInt(moduleNumber);
+      const chalNum = parseInt(challengeNumber);
+
+      // Fetch lesson and sources in PARALLEL
+      const [lessonResponse, sourcesResponse] = await Promise.allSettled([
+        api.startLesson(modNum, chalNum),
+        api.getLessonSources(modNum, chalNum)
+      ]);
+
+      // Handle lesson response
+      if (lessonResponse.status === 'fulfilled') {
+        handleResponse(lessonResponse.value);
+      } else {
+        console.error('Failed to start lesson:', lessonResponse.reason);
+        setError(lessonResponse.reason?.message || 'Failed to start lesson');
+      }
+
+      // Handle sources response (non-blocking)
+      if (sourcesResponse.status === 'fulfilled') {
+        const srcData = sourcesResponse.value;
+        if (srcData.attributions && srcData.attributions.length > 0) {
+          setSources(srcData.attributions);
+        }
+        if (srcData.error) {
+          setSourcesError(srcData.error);
+        }
+      } else {
+        console.error('Failed to fetch sources:', sourcesResponse.reason);
+        setSourcesError('Failed to load sources');
+      }
+
     } catch (err) {
       console.error('Failed to start lesson:', err);
       setError(err.message || 'Failed to start lesson');
     } finally {
       setLoading(false);
+      setSourcesLoading(false);
     }
   };
 
@@ -573,12 +608,18 @@ function LessonPage({ onComplete }) {
         </div>
       </div>
 
-      {/* Main content */}
+      {/* Main content with sidebar */}
       <div style={{
-        maxWidth: '900px', margin: '0 auto',
+        display: 'flex',
+        gap: '24px',
+        maxWidth: '1200px',
+        margin: '0 auto',
         padding: '100px 24px 40px',
-        position: 'relative', zIndex: 10
+        position: 'relative',
+        zIndex: 10
       }}>
+        {/* Left: Lesson content */}
+        <div style={{ flex: 1, minWidth: 0, maxWidth: '900px' }}>
         {/* Completion banner */}
         {isCompleted && (
           <div style={{
@@ -829,6 +870,159 @@ function LessonPage({ onComplete }) {
             </div>
           </div>
         )}
+        </div>
+
+        {/* Right: Sources Sidebar */}
+        <div style={{
+          width: '280px',
+          flexShrink: 0,
+          display: sources.length > 0 || sourcesLoading ? 'block' : 'none'
+        }}>
+          <div style={{
+            position: 'sticky',
+            top: '100px',
+            borderRadius: '16px',
+            background: 'linear-gradient(to bottom, rgba(10,10,18,0.95), rgba(8,8,16,0.98))',
+            border: '1px solid rgba(255,255,255,0.08)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+            overflow: 'hidden'
+          }}>
+            {/* Sidebar header */}
+            <div style={{
+              padding: '16px',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}>
+              <div style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <svg style={{ width: '14px', height: '14px', color: 'white' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
+                  Sources
+                </div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
+                  Verified references
+                </div>
+              </div>
+            </div>
+
+            {/* Sources content */}
+            <div style={{ padding: '12px' }}>
+              {sourcesLoading ? (
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '24px',
+                  color: 'rgba(255,255,255,0.5)'
+                }}>
+                  <svg style={{ width: '20px', height: '20px', animation: 'spin 1s linear infinite', marginRight: '8px' }} fill="none" viewBox="0 0 24 24">
+                    <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span style={{ fontSize: '12px' }}>Finding sources...</span>
+                </div>
+              ) : sources.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {sources.map((source, idx) => (
+                    <a
+                      key={idx}
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'block',
+                        padding: '12px',
+                        borderRadius: '10px',
+                        background: 'rgba(6,182,212,0.08)',
+                        border: '1px solid rgba(6,182,212,0.2)',
+                        textDecoration: 'none',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.background = 'rgba(6,182,212,0.15)';
+                        e.currentTarget.style.borderColor = 'rgba(6,182,212,0.4)';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.background = 'rgba(6,182,212,0.08)';
+                        e.currentTarget.style.borderColor = 'rgba(6,182,212,0.2)';
+                        e.currentTarget.style.transform = 'translateY(0)';
+                      }}
+                    >
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        marginBottom: '6px'
+                      }}>
+                        <svg style={{ width: '12px', height: '12px', color: '#06b6d4', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        <span style={{
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          color: '#22d3ee',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {source.concept}
+                        </span>
+                      </div>
+                      <p style={{
+                        fontSize: '11px',
+                        color: 'rgba(255,255,255,0.6)',
+                        margin: 0,
+                        lineHeight: 1.5,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden'
+                      }}>
+                        {source.description}
+                      </p>
+                    </a>
+                  ))}
+                </div>
+              ) : sourcesError ? (
+                <div style={{
+                  padding: '16px',
+                  fontSize: '12px',
+                  color: 'rgba(255,255,255,0.4)',
+                  textAlign: 'center'
+                }}>
+                  Could not load sources
+                </div>
+              ) : null}
+            </div>
+
+            {/* Footer note */}
+            {sources.length > 0 && (
+              <div style={{
+                padding: '12px 16px',
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+                fontSize: '10px',
+                color: 'rgba(255,255,255,0.35)',
+                textAlign: 'center'
+              }}>
+                Sources verified via Google Search
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <style>{`

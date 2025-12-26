@@ -51,6 +51,9 @@ class MasteryEngine:
         self.last_response_time = 0
         self.last_token_usage = {}
 
+        # Resource cache for grounded references (per lesson)
+        self._lesson_resources_cache = {}  # Key: (module_idx, lesson_idx)
+
     def _setup_gemini(self):
         """Setup Google GenAI client."""
         api_key = os.getenv("GEMINI_API_KEY")
@@ -212,6 +215,173 @@ class MasteryEngine:
 
         # Get initial response from LLM (no user input yet)
         return self._generate_response(user_input=None)
+
+    def get_source_attributions(self, use_cache: bool = True) -> Dict[str, Any]:
+        """
+        Find source attributions for the methodologies/frameworks used in this lesson.
+
+        Identifies named frameworks, their industry origins, and authoritative
+        documentation. Adds credibility by showing the lesson teaches established
+        industry practices.
+
+        Example output:
+            "Kubernetes Pods — Official container orchestration concept from kubernetes.io"
+            + link to documentation
+
+        Args:
+            use_cache: Return cached attributions if available
+
+        Returns:
+            {
+                "attributions": [
+                    {
+                        "concept": "Kubernetes Pods",
+                        "description": "Official documentation for the smallest deployable unit",
+                        "url": "https://..."
+                    }
+                ],
+                "lesson_topic": str,
+                "cached": bool,
+                "error": None or str
+            }
+        """
+        lesson = self.get_current_lesson()
+        if not lesson:
+            return {"attributions": [], "lesson_topic": "", "cached": False, "error": "No lesson"}
+
+        cache_key = (self.current_module_idx, self.current_lesson_idx)
+
+        if use_cache and cache_key in self._lesson_resources_cache:
+            cached = self._lesson_resources_cache[cache_key].copy()
+            cached["cached"] = True
+            return cached
+
+        topic = lesson.get("topic", "")
+        urac = lesson.get("urac_blueprint", {})
+        core_concept = urac.get("understand", "")
+        application = urac.get("apply", "")
+
+        # Prompt designed to get grounded, verifiable sources
+        prompt = f"""I'm creating educational content about: "{topic}"
+
+The lesson teaches:
+- Core concept: {core_concept}
+- Practical application: {application}
+
+Find 2-3 authoritative sources that document these concepts. For each source, write one sentence explaining what aspect of the lesson it supports.
+
+Focus on: official documentation, industry standards, reputable technical references."""
+
+        try:
+            start_time = time.time()
+
+            # Use gemini-2.0-flash for grounding (stable support)
+            grounding_tool = types.Tool(google_search=types.GoogleSearch())
+            config = types.GenerateContentConfig(
+                tools=[grounding_tool],
+                temperature=0.0,
+                max_output_tokens=800,
+            )
+
+            response = self.client.models.generate_content(
+                model="gemini-2.0-flash",  # Stable model with grounding support
+                contents=prompt,
+                config=config,
+            )
+
+            duration = time.time() - start_time
+            attributions = []
+
+            if response.candidates and response.candidates[0].grounding_metadata:
+                metadata = response.candidates[0].grounding_metadata
+                chunks = getattr(metadata, 'grounding_chunks', None) or []
+                supports = getattr(metadata, 'grounding_supports', None) or []
+                response_text = response.text or ""
+
+                # Build mapping: chunk index -> best supporting text segment
+                chunk_descriptions = {}
+                for support in supports:
+                    if not hasattr(support, 'segment') or not hasattr(support, 'grounding_chunk_indices'):
+                        continue
+
+                    seg = support.segment
+                    start = getattr(seg, 'start_index', 0) or 0
+                    end = getattr(seg, 'end_index', len(response_text)) or len(response_text)
+                    text = response_text[start:end].strip()
+
+                    # Get confidence scores
+                    scores = getattr(support, 'confidence_scores', []) or []
+
+                    for i, idx in enumerate(support.grounding_chunk_indices or []):
+                        score = scores[i] if i < len(scores) else 0
+                        # Keep the highest confidence description for each chunk
+                        if idx not in chunk_descriptions or score > chunk_descriptions[idx][1]:
+                            chunk_descriptions[idx] = (text, score)
+
+                # Extract attributions from top chunks
+                seen_domains = set()
+                for idx, chunk in enumerate(chunks):
+                    if len(attributions) >= 3:  # Limit to 3
+                        break
+
+                    if not hasattr(chunk, 'web') or not chunk.web:
+                        continue
+
+                    url = getattr(chunk.web, 'uri', None)
+                    title = getattr(chunk.web, 'title', None) or "Source"
+
+                    if not url:
+                        continue
+
+                    # Dedupe by domain (avoid multiple medium.com, etc.)
+                    domain = title.lower().replace('www.', '')
+                    if domain in seen_domains:
+                        continue
+                    seen_domains.add(domain)
+
+                    # Get description from grounding support
+                    description = f"Reference for {topic}"
+                    if idx in chunk_descriptions:
+                        desc_text = chunk_descriptions[idx][0]
+                        # Clean up the description
+                        desc_text = desc_text.replace('*', '').replace('\n', ' ').strip()
+                        if len(desc_text) > 10:
+                            description = desc_text[:150] + "..." if len(desc_text) > 150 else desc_text
+
+                    attributions.append({
+                        "concept": title,
+                        "description": description,
+                        "url": url
+                    })
+
+            result = {
+                "attributions": attributions,
+                "lesson_topic": topic,
+                "cached": False,
+                "fetch_time_seconds": round(duration, 2),
+                "error": None
+            }
+
+            self._lesson_resources_cache[cache_key] = result
+
+            print(f"\n💡 Source Attributions for '{topic}': {len(attributions)} found ({duration:.1f}s)")
+            for a in attributions:
+                print(f"   • {a['concept']}: {a['description'][:50]}...")
+
+            return result
+
+        except Exception as e:
+            print(f"\n⚠️ Attribution error: {e}")
+            return {
+                "attributions": [],
+                "lesson_topic": topic,
+                "cached": False,
+                "error": str(e)
+            }
+
+    def clear_attributions_cache(self):
+        """Clear cached source attributions."""
+        self._lesson_resources_cache = {}
 
     def process_user_input(self, user_input: str) -> Dict[str, Any]:
         """
@@ -520,6 +690,13 @@ Keep under 80 words. Set `current_phase: "COMPLETED"`
 
 ## Mermaid Diagrams
 
+IMPORTANT: Keep diagrams clean and minimal. Do NOT use:
+- Colors (no `style`, no `fill:`, no `stroke:`)
+- Classdefs or custom styling
+- Subgraphs with colored backgrounds
+
+Just use plain nodes and edges. The UI will apply consistent theming.
+
 ```mermaid
 graph LR
     A[Input] --> B[Process] --> C[Output]
@@ -527,12 +704,12 @@ graph LR
 
 ```mermaid
 graph TD
-    A[Data] --> B{{Valid?}}
+    A[Data] --> B{{Decision}}
     B -->|Yes| C[Save]
     B -->|No| D[Error]
 ```
 
-Use `graph LR` for linear flows, `graph TD` for decisions.
+Use `graph LR` for linear flows, `graph TD` for decisions. Keep it simple.
 
 ## Tables
 

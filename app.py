@@ -818,6 +818,130 @@ def respond_to_lesson(request: LessonRespondRequest, user_id: str = Depends(get_
 
 
 # ============================================================
+# SOURCE ATTRIBUTION (Trust Layer)
+# ============================================================
+
+class SourceAttributionRequest(BaseModel):
+    """Request for source attributions"""
+    module_number: int
+    challenge_number: int
+
+
+class SourceAttribution(BaseModel):
+    """Single source attribution"""
+    concept: str
+    description: str
+    url: str
+
+
+class SourceAttributionResponse(BaseModel):
+    """Response with source attributions"""
+    attributions: list[SourceAttribution]
+    lesson_topic: str
+    cached: bool
+    error: Optional[str] = None
+
+
+@app.post("/lesson/sources", response_model=SourceAttributionResponse)
+def get_lesson_sources(request: SourceAttributionRequest, user_id: str = Depends(get_current_user)):
+    """
+    Get source attributions for a lesson using Google Search grounding.
+
+    This endpoint is designed to be called in PARALLEL with /lesson/start.
+    It finds authoritative sources that validate the lesson content,
+    adding trust and credibility to the learning experience.
+
+    Returns:
+        SourceAttributionResponse with list of attributions (concept, description, url)
+    """
+    try:
+        module_num = request.module_number
+        challenge_num = request.challenge_number
+
+        print(f"\n📚 Fetching sources for user {user_id[:8]}: Module {module_num}, Challenge {challenge_num}")
+
+        # Load module challenges from DB
+        module_challenges = db.get_module_challenges(user_id, module_num)
+        if not module_challenges:
+            return SourceAttributionResponse(
+                attributions=[],
+                lesson_topic="",
+                cached=False,
+                error=f"Module {module_num} not found"
+            )
+
+        # Get the specific lesson from the lesson_plan
+        lesson_plan = module_challenges.get("lesson_plan", [])
+        lesson_data = None
+        for lesson in lesson_plan:
+            if lesson.get("sequence") == challenge_num:
+                lesson_data = lesson
+                break
+
+        if not lesson_data:
+            return SourceAttributionResponse(
+                attributions=[],
+                lesson_topic="",
+                cached=False,
+                error=f"Challenge {challenge_num} not found"
+            )
+
+        # Get user context
+        learning_path = db.get_learning_path(user_id)
+        user_baseline = learning_path.get("input", {}).get("user_baseline", "") if learning_path else ""
+        user_objective = learning_path.get("input", {}).get("user_objective", "") if learning_path else ""
+
+        # Initialize a temporary MasteryEngine for source attribution
+        engine = MasteryEngine()
+        engine.load_lesson_from_data(
+            user_baseline=user_baseline,
+            user_objective=user_objective,
+            module_data=module_challenges,
+            lesson_index=challenge_num - 1,
+            acquired_knowledge=[]  # Not needed for source attribution
+        )
+
+        # Fetch source attributions with grounding
+        result = engine.get_source_attributions(use_cache=True)
+
+        # Log token usage (estimate for grounding call)
+        # Note: Grounding uses a separate model call
+        db.log_token_usage(
+            user_id=user_id,
+            agent_name="source_attribution",
+            prompt_tokens=100,  # Approximate
+            completion_tokens=200,  # Approximate
+            total_tokens=300,
+            model_name="gemini-2.0-flash"
+        )
+
+        return SourceAttributionResponse(
+            attributions=[
+                SourceAttribution(
+                    concept=a["concept"],
+                    description=a["description"],
+                    url=a["url"]
+                )
+                for a in result.get("attributions", [])
+            ],
+            lesson_topic=result.get("lesson_topic", ""),
+            cached=result.get("cached", False),
+            error=result.get("error")
+        )
+
+    except Exception as e:
+        print(f"❌ Failed to get sources: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return SourceAttributionResponse(
+            attributions=[],
+            lesson_topic="",
+            cached=False,
+            error=str(e)
+        )
+
+
+# ============================================================
 # USER DATA MANAGEMENT
 # ============================================================
 
