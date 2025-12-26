@@ -262,15 +262,11 @@ class MasteryEngine:
         application = urac.get("apply", "")
 
         # Prompt designed to get grounded, verifiable sources
-        prompt = f"""I'm creating educational content about: "{topic}"
+        prompt = f"""Lesson topic: "{topic}"
+Core concept: {core_concept}
+Application task: {application}
 
-The lesson teaches:
-- Core concept: {core_concept}
-- Practical application: {application}
-
-Find 2-3 authoritative sources that document these concepts. For each source, write one sentence explaining what aspect of the lesson it supports.
-
-Focus on: official documentation, industry standards, reputable technical references."""
+Find 2-3 authoritative sources. For each, write ONE sentence explicitly connecting it to THIS lesson - say which concept or task it supports and why it's useful for the learner."""
 
         try:
             start_time = time.time()
@@ -295,33 +291,60 @@ Focus on: official documentation, industry standards, reputable technical refere
             if response.candidates and response.candidates[0].grounding_metadata:
                 metadata = response.candidates[0].grounding_metadata
                 chunks = getattr(metadata, 'grounding_chunks', None) or []
-                supports = getattr(metadata, 'grounding_supports', None) or []
                 response_text = response.text or ""
 
-                # Build mapping: chunk index -> best supporting text segment
-                chunk_descriptions = {}
-                for support in supports:
-                    if not hasattr(support, 'segment') or not hasattr(support, 'grounding_chunk_indices'):
+                # Parse numbered items from LLM response
+                # Match by position: item 1 → first unique domain, item 2 → second, etc.
+                numbered_items = []
+                lines = response_text.split('\n')
+                current_item = None
+
+                for i, line in enumerate(lines):
+                    line_stripped = line.strip()
+                    if not line_stripped:
                         continue
 
-                    seg = support.segment
-                    start = getattr(seg, 'start_index', 0) or 0
-                    end = getattr(seg, 'end_index', len(response_text)) or len(response_text)
-                    text = response_text[start:end].strip()
+                    # Check if this is a numbered item start (1., 2., etc.)
+                    if line_stripped and line_stripped[0].isdigit() and '.' in line_stripped[:3]:
+                        if current_item:
+                            numbered_items.append(current_item)
+                        current_item = line_stripped
+                    elif current_item and line_stripped.startswith('*'):
+                        # Continuation line with description
+                        current_item += ' ' + line_stripped.lstrip('*').strip()
 
-                    # Get confidence scores
-                    scores = getattr(support, 'confidence_scores', []) or []
+                if current_item:
+                    numbered_items.append(current_item)
 
-                    for i, idx in enumerate(support.grounding_chunk_indices or []):
-                        score = scores[i] if i < len(scores) else 0
-                        # Keep the highest confidence description for each chunk
-                        if idx not in chunk_descriptions or score > chunk_descriptions[idx][1]:
-                            chunk_descriptions[idx] = (text, score)
+                # Extract descriptions from numbered items
+                item_descriptions = []
+                for item in numbered_items:
+                    desc = None
+                    # Format: "1. **Title**: Description" or "1. **Title** - Description"
+                    if '**:' in item:
+                        desc = item.split('**:', 1)[-1].strip()
+                    elif '** -' in item:
+                        desc = item.split('** -', 1)[-1].strip()
+                    elif '** –' in item:
+                        desc = item.split('** –', 1)[-1].strip()
+                    elif '**.' in item:
+                        desc = item.split('**.', 1)[-1].strip()
+                    # Fallback: everything after the closing **
+                    elif '**' in item:
+                        parts = item.split('**')
+                        if len(parts) >= 3:
+                            desc = parts[-1].strip().lstrip(':').lstrip('-').strip()
 
-                # Extract attributions from top chunks
+                    if desc and len(desc) > 20:
+                        item_descriptions.append(desc)
+                    else:
+                        item_descriptions.append(None)
+
+                # Build attributions from unique domains, matching by position
                 seen_domains = set()
-                for idx, chunk in enumerate(chunks):
-                    if len(attributions) >= 3:  # Limit to 3
+                desc_index = 0
+                for chunk in chunks:
+                    if len(attributions) >= 3:
                         break
 
                     if not hasattr(chunk, 'web') or not chunk.web:
@@ -333,20 +356,16 @@ Focus on: official documentation, industry standards, reputable technical refere
                     if not url:
                         continue
 
-                    # Dedupe by domain (avoid multiple medium.com, etc.)
-                    domain = title.lower().replace('www.', '')
-                    if domain in seen_domains:
+                    domain_full = title.lower().replace('www.', '')
+                    if domain_full in seen_domains:
                         continue
-                    seen_domains.add(domain)
+                    seen_domains.add(domain_full)
 
-                    # Get description from grounding support
+                    # Get description by position (first unique domain → first item, etc.)
                     description = f"Reference for {topic}"
-                    if idx in chunk_descriptions:
-                        desc_text = chunk_descriptions[idx][0]
-                        # Clean up the description
-                        desc_text = desc_text.replace('*', '').replace('\n', ' ').strip()
-                        if len(desc_text) > 10:
-                            description = desc_text[:150] + "..." if len(desc_text) > 150 else desc_text
+                    if desc_index < len(item_descriptions) and item_descriptions[desc_index]:
+                        description = item_descriptions[desc_index]
+                    desc_index += 1
 
                     attributions.append({
                         "concept": title,
@@ -616,17 +635,16 @@ Your FIRST message must:
 1. Hook (1 sentence connecting to their knowledge)
 2. Visual (diagram or table)
 3. Brief decode (one bullet per element)
-4. Easy question about the visual (answerable by looking at it)
+4. Simple question with a mini-scenario
 
-Example easy questions:
-- "Looking at the diagram, what's the final output?"
-- "According to the table, which option is faster?"
-- "What step comes after X in this flow?"
+**Question rule:** Frame as a quick scenario, not a lookup.
+- BAD: "What does the Readiness probe do?" (just reading)
+- GOOD: "Your app started but the database isn't connected yet—which probe handles this?"
 
-**NO key insight in this phase** - save that for DEEPEN.
+Keep it easy but require applying the visual to a situation.
 
-**If correct:** Brief acknowledgment (1 sentence), then transition to DEEPEN
-**If incorrect:** Give a hint pointing to the visual, let them retry
+**If correct:** Brief acknowledgment, transition to DEEPEN
+**If incorrect:** Hint pointing to the visual, let them retry
 
 Set `current_phase: "ENGAGE"`
 

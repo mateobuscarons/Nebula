@@ -608,18 +608,16 @@ function LessonPage({ onComplete }) {
         </div>
       </div>
 
-      {/* Main content with sidebar */}
+      {/* Main content - centered lesson */}
       <div style={{
-        display: 'flex',
-        gap: '24px',
-        maxWidth: '1200px',
+        maxWidth: '950px',
         margin: '0 auto',
-        padding: '100px 24px 40px',
+        padding: '100px 40px 40px',
         position: 'relative',
         zIndex: 10
       }}>
-        {/* Left: Lesson content */}
-        <div style={{ flex: 1, minWidth: 0, maxWidth: '900px' }}>
+        {/* Lesson content */}
+        <div style={{ width: '100%' }}>
         {/* Completion banner */}
         {isCompleted && (
           <div style={{
@@ -872,15 +870,18 @@ function LessonPage({ onComplete }) {
         )}
         </div>
 
-        {/* Right: Sources Sidebar */}
+        {/* Right: Sources Sidebar - Fixed on right edge */}
         <div style={{
-          width: '280px',
-          flexShrink: 0,
-          display: sources.length > 0 || sourcesLoading ? 'block' : 'none'
+          position: 'fixed',
+          right: '24px',
+          top: '100px',
+          width: '300px',
+          maxHeight: 'calc(100vh - 140px)',
+          overflowY: 'auto',
+          display: sources.length > 0 || sourcesLoading ? 'block' : 'none',
+          zIndex: 40
         }}>
           <div style={{
-            position: 'sticky',
-            top: '100px',
             borderRadius: '16px',
             background: 'linear-gradient(to bottom, rgba(10,10,18,0.95), rgba(8,8,16,0.98))',
             border: '1px solid rgba(255,255,255,0.08)',
@@ -983,14 +984,10 @@ function LessonPage({ onComplete }) {
                         </span>
                       </div>
                       <p style={{
-                        fontSize: '11px',
-                        color: 'rgba(255,255,255,0.6)',
+                        fontSize: '12px',
+                        color: 'rgba(255,255,255,0.7)',
                         margin: 0,
-                        lineHeight: 1.5,
-                        display: '-webkit-box',
-                        WebkitLineClamp: 3,
-                        WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden'
+                        lineHeight: 1.6
                       }}>
                         {source.description}
                       </p>
