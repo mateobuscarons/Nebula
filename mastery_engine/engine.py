@@ -262,11 +262,10 @@ class MasteryEngine:
         application = urac.get("apply", "")
 
         # Prompt designed to get grounded, verifiable sources
-        prompt = f"""Lesson topic: "{topic}"
-Core concept: {core_concept}
-Application task: {application}
+        prompt = f"""Lesson: "{topic}"
+Concept: {core_concept}
 
-Find 2-3 authoritative sources. For each, write ONE sentence explicitly connecting it to THIS lesson - say which concept or task it supports and why it's useful for the learner."""
+Find 2-3 authoritative sources. For each, write a SHORT phrase (under 15 words) saying how it supports the lesson."""
 
         try:
             start_time = time.time()
@@ -715,19 +714,21 @@ IMPORTANT: Keep diagrams clean and minimal. Do NOT use:
 
 Just use plain nodes and edges. The UI will apply consistent theming.
 
+**ALWAYS use `graph LR` (horizontal/left-to-right).** Never use `graph TD` (vertical).
+
 ```mermaid
 graph LR
     A[Input] --> B[Process] --> C[Output]
 ```
 
 ```mermaid
-graph TD
+graph LR
     A[Data] --> B{{Decision}}
     B -->|Yes| C[Save]
     B -->|No| D[Error]
 ```
 
-Use `graph LR` for linear flows, `graph TD` for decisions. Keep it simple.
+Keep diagrams compact and horizontal.
 
 ## Tables
 
