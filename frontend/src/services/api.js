@@ -122,18 +122,6 @@ export const api = {
     });
   },
 
-  // Get source attributions for a lesson (Trust Layer)
-  // Call this in parallel with startLesson for best performance
-  async getLessonSources(moduleNumber, challengeNumber) {
-    return apiCall('/lesson/sources', {
-      method: 'POST',
-      body: JSON.stringify({
-        module_number: moduleNumber,
-        challenge_number: challengeNumber,
-      }),
-    });
-  },
-
   // Admin: Get statistics
   async getAdminStats() {
     return apiCall('/admin/stats');

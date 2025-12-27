@@ -51,8 +51,8 @@ class MasteryEngine:
         self.last_response_time = 0
         self.last_token_usage = {}
 
-        # Resource cache for grounded references (per lesson)
-        self._lesson_resources_cache = {}  # Key: (module_idx, lesson_idx)
+        # Grounding context for current lesson
+        self._lesson_grounding = None
 
     def _setup_gemini(self):
         """Setup Google GenAI client."""
@@ -216,190 +216,187 @@ class MasteryEngine:
         # Get initial response from LLM (no user input yet)
         return self._generate_response(user_input=None)
 
-    def get_source_attributions(self, use_cache: bool = True) -> Dict[str, Any]:
+    def ground_lesson(self) -> Dict[str, Any]:
         """
-        Find source attributions for the methodologies/frameworks used in this lesson.
+        Ground the lesson on authoritative sources BEFORE teaching.
 
-        Identifies named frameworks, their industry origins, and authoritative
-        documentation. Adds credibility by showing the lesson teaches established
-        industry practices.
-
-        Example output:
-            "Kubernetes Pods — Official container orchestration concept from kubernetes.io"
-            + link to documentation
-
-        Args:
-            use_cache: Return cached attributions if available
+        Uses the pre-defined URAC blueprint to find relevant sources.
+        Returns sources + optional industry insight to be injected into teaching context.
 
         Returns:
             {
-                "attributions": [
-                    {
-                        "concept": "Kubernetes Pods",
-                        "description": "Official documentation for the smallest deployable unit",
-                        "url": "https://..."
-                    }
-                ],
-                "lesson_topic": str,
-                "cached": bool,
-                "error": None or str
+                "sources": [{"title": str, "url": str, "domain": str}],
+                "industry_insight": str or None,
+                "grounded": bool
             }
         """
         lesson = self.get_current_lesson()
         if not lesson:
-            return {"attributions": [], "lesson_topic": "", "cached": False, "error": "No lesson"}
-
-        cache_key = (self.current_module_idx, self.current_lesson_idx)
-
-        if use_cache and cache_key in self._lesson_resources_cache:
-            cached = self._lesson_resources_cache[cache_key].copy()
-            cached["cached"] = True
-            return cached
+            return {"sources": [], "industry_insight": None, "grounded": False}
 
         topic = lesson.get("topic", "")
         urac = lesson.get("urac_blueprint", {})
         core_concept = urac.get("understand", "")
         application = urac.get("apply", "")
 
-        # Prompt designed to get grounded, verifiable sources
-        prompt = f"""Lesson: "{topic}"
-Concept: {core_concept}
+        # Focused grounding prompt - minimal tokens, clear purpose
+        prompt = f"""Find 2-3 authoritative sources for this technical concept:
 
-Find 2-3 authoritative sources. For each, write a SHORT phrase (under 15 words) saying how it supports the lesson."""
+Topic: {topic}
+Core concept: {core_concept}
+
+Requirements:
+1. Official documentation or industry leaders only
+2. Include one real-world usage fact with numbers if available"""
 
         try:
             start_time = time.time()
 
-            # Use gemini-2.0-flash for grounding (stable support)
-            grounding_tool = types.Tool(google_search=types.GoogleSearch())
-            config = types.GenerateContentConfig(
-                tools=[grounding_tool],
-                temperature=0.0,
-                max_output_tokens=800,
-            )
-
             response = self.client.models.generate_content(
-                model="gemini-2.0-flash",  # Stable model with grounding support
+                model="gemini-2.5-flash",
                 contents=prompt,
-                config=config,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                    temperature=0.0,
+                    max_output_tokens=400,
+                ),
             )
 
             duration = time.time() - start_time
-            attributions = []
+            result = self._parse_grounding_response(response, topic)
+            result["fetch_time_seconds"] = round(duration, 2)
 
-            if response.candidates and response.candidates[0].grounding_metadata:
-                metadata = response.candidates[0].grounding_metadata
-                chunks = getattr(metadata, 'grounding_chunks', None) or []
-                response_text = response.text or ""
+            # Cache for this lesson
+            self._lesson_grounding = result
 
-                # Parse numbered items from LLM response
-                # Match by position: item 1 → first unique domain, item 2 → second, etc.
-                numbered_items = []
-                lines = response_text.split('\n')
-                current_item = None
-
-                for i, line in enumerate(lines):
-                    line_stripped = line.strip()
-                    if not line_stripped:
-                        continue
-
-                    # Check if this is a numbered item start (1., 2., etc.)
-                    if line_stripped and line_stripped[0].isdigit() and '.' in line_stripped[:3]:
-                        if current_item:
-                            numbered_items.append(current_item)
-                        current_item = line_stripped
-                    elif current_item and line_stripped.startswith('*'):
-                        # Continuation line with description
-                        current_item += ' ' + line_stripped.lstrip('*').strip()
-
-                if current_item:
-                    numbered_items.append(current_item)
-
-                # Extract descriptions from numbered items
-                item_descriptions = []
-                for item in numbered_items:
-                    desc = None
-                    # Format: "1. **Title**: Description" or "1. **Title** - Description"
-                    if '**:' in item:
-                        desc = item.split('**:', 1)[-1].strip()
-                    elif '** -' in item:
-                        desc = item.split('** -', 1)[-1].strip()
-                    elif '** –' in item:
-                        desc = item.split('** –', 1)[-1].strip()
-                    elif '**.' in item:
-                        desc = item.split('**.', 1)[-1].strip()
-                    # Fallback: everything after the closing **
-                    elif '**' in item:
-                        parts = item.split('**')
-                        if len(parts) >= 3:
-                            desc = parts[-1].strip().lstrip(':').lstrip('-').strip()
-
-                    if desc and len(desc) > 20:
-                        item_descriptions.append(desc)
-                    else:
-                        item_descriptions.append(None)
-
-                # Build attributions from unique domains, matching by position
-                seen_domains = set()
-                desc_index = 0
-                for chunk in chunks:
-                    if len(attributions) >= 3:
-                        break
-
-                    if not hasattr(chunk, 'web') or not chunk.web:
-                        continue
-
-                    url = getattr(chunk.web, 'uri', None)
-                    title = getattr(chunk.web, 'title', None) or "Source"
-
-                    if not url:
-                        continue
-
-                    domain_full = title.lower().replace('www.', '')
-                    if domain_full in seen_domains:
-                        continue
-                    seen_domains.add(domain_full)
-
-                    # Get description by position (first unique domain → first item, etc.)
-                    description = f"Reference for {topic}"
-                    if desc_index < len(item_descriptions) and item_descriptions[desc_index]:
-                        description = item_descriptions[desc_index]
-                    desc_index += 1
-
-                    attributions.append({
-                        "concept": title,
-                        "description": description,
-                        "url": url
-                    })
-
-            result = {
-                "attributions": attributions,
-                "lesson_topic": topic,
-                "cached": False,
-                "fetch_time_seconds": round(duration, 2),
-                "error": None
-            }
-
-            self._lesson_resources_cache[cache_key] = result
-
-            print(f"\n💡 Source Attributions for '{topic}': {len(attributions)} found ({duration:.1f}s)")
-            for a in attributions:
-                print(f"   • {a['concept']}: {a['description'][:50]}...")
+            print(f"\n🔍 Grounded '{topic}': {len(result['sources'])} sources ({duration:.1f}s)")
+            if result.get("industry_insight"):
+                print(f"   💡 Insight: {result['industry_insight'][:60]}...")
 
             return result
 
         except Exception as e:
-            print(f"\n⚠️ Attribution error: {e}")
-            return {
-                "attributions": [],
-                "lesson_topic": topic,
-                "cached": False,
-                "error": str(e)
-            }
+            print(f"\n⚠️ Grounding error: {e}")
+            self._lesson_grounding = {"sources": [], "industry_insight": None, "grounded": False, "error": str(e)}
+            return self._lesson_grounding
 
-    def clear_attributions_cache(self):
-        """Clear cached source attributions."""
-        self._lesson_resources_cache = {}
+    def _parse_grounding_response(self, response, topic: str) -> Dict[str, Any]:
+        """Extract sources and industry insight from grounding response."""
+        result = {
+            "sources": [],
+            "industry_insight": None,
+            "grounded": False,
+        }
+
+        if not response.candidates:
+            return result
+
+        metadata = response.candidates[0].grounding_metadata
+        response_text = response.text or ""
+
+        if not metadata:
+            return result
+
+        result["grounded"] = True
+
+        # Extract sources from groundingChunks (reliable, no parsing needed)
+        seen_domains = set()
+        chunks = getattr(metadata, 'grounding_chunks', None) or []
+
+        for chunk in chunks:
+            if len(result["sources"]) >= 3:
+                break
+
+            if not hasattr(chunk, 'web') or not chunk.web:
+                continue
+
+            web = chunk.web
+            url = getattr(web, 'uri', None)
+            title = getattr(web, 'title', None)
+
+            if not url:
+                continue
+
+            domain = self._extract_domain(url)
+            if domain in seen_domains:
+                continue
+            seen_domains.add(domain)
+
+            result["sources"].append({
+                "title": title or domain,
+                "url": url,
+                "domain": domain,
+            })
+
+        # Extract industry insight (sentence with numbers/scale)
+        result["industry_insight"] = self._extract_industry_insight(response_text)
+
+        return result
+
+    def _extract_domain(self, url: str) -> str:
+        """Extract domain from URL."""
+        from urllib.parse import urlparse
+        try:
+            domain = urlparse(url).netloc
+            return domain.replace('www.', '')
+        except Exception:
+            return ""
+
+    def _extract_industry_insight(self, text: str) -> Optional[str]:
+        """
+        Find a compelling industry insight with numbers/scale.
+        Look for sentences that provide real-world context.
+        """
+        # Split into sentences
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+
+            # Must have reasonable length
+            if not (40 < len(sentence) < 200):
+                continue
+
+            # Look for quantifiable data
+            has_number = bool(re.search(r'\d+', sentence))
+            has_scale_word = any(w in sentence.lower() for w in [
+                'million', 'billion', 'percent', '%', 'companies',
+                'organizations', 'daily', 'per day', 'per second',
+                'users', 'requests', 'transactions', 'teams'
+            ])
+
+            if has_number and has_scale_word:
+                # Clean up any markdown
+                clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', sentence)
+                clean = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean)
+                return clean.strip()
+
+        return None
+
+    def get_grounding_context(self) -> Dict[str, Any]:
+        """Get cached grounding context for current lesson."""
+        return self._lesson_grounding or {"sources": [], "industry_insight": None, "grounded": False}
+
+    def _format_grounding_context(self) -> str:
+        """Format grounding context for injection into system prompt."""
+        grounding = self.get_grounding_context()
+
+        if not grounding.get("grounded"):
+            return "# INDUSTRY CONTEXT\n\n(No industry data available - use your knowledge of industry practices instead)"
+
+        lines = ["# INDUSTRY CONTEXT"]
+
+        if grounding.get("industry_insight"):
+            lines.append(f"\n**Industry Fact:** {grounding['industry_insight']}")
+
+        if grounding.get("sources"):
+            lines.append("\n**Source Organizations:**")
+            for src in grounding["sources"]:
+                lines.append(f"- {src['domain']}")
+
+        return "\n".join(lines)
 
     def process_user_input(self, user_input: str) -> Dict[str, Any]:
         """
@@ -625,6 +622,8 @@ Find 2-3 authoritative sources. For each, write a SHORT phrase (under 15 words) 
 **Application Task:** {urac.get("apply", "")}
 **Connection:** {urac.get("connect", "")}
 
+{self._format_grounding_context()}
+
 # THE 4-PHASE LESSON STRUCTURE
 
 ## Phase 1: ENGAGE (1-2 turns)
@@ -653,8 +652,18 @@ Set `current_phase: "ENGAGE"`
 When transitioning from ENGAGE:
 1. Acknowledge their answer briefly (1 sentence)
 2. Expand with MORE detail - add a visual, formula, or table
-3. Include a key insight using blockquote: > **Key:** [the critical point]
+3. **Include ONE industry reference from the INDUSTRY CONTEXT section** - this is REQUIRED
 4. Then ask the Analytical Question based on: "{urac.get("retain", "")}"
+
+**Industry reference formats (these areexamples, you can use any of these or come up with your own):**
+- Scale insight: "Spotify's 150 engineering teams each manage their own [X], deploying independently..."
+- Origin story: "Google created this pattern when they needed to..."
+- Adoption context: "This became the standard after companies like [X] proved..."
+- Problem framing: "Before [concept], teams at Netflix struggled with..."
+- Quantified impact: "At scale, this handles [X million] requests because..."
+- Design rationale: "The reason [major company] built it this way was..."
+
+Place the industry reference where it reinforces understanding—before the key insight, as the key insight itself, or as context for the analytical question.
 
 **How to frame the analytical question (IMPORTANT):**
 - DON'T ask abstract "why" questions that feel like a test

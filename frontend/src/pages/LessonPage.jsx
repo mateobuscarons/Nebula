@@ -273,12 +273,10 @@ function LessonPage({ onComplete }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
-  // Source attributions state (Trust Layer)
-  const [sources, setSources] = useState([]);
-  const [sourcesLoading, setSourcesLoading] = useState(true);
-  const [sourcesError, setSourcesError] = useState(null);
+  // Sources state (from lesson response)
+  const [sources, setSources] = useState(null);
 
-  // Start lesson on mount - fetch lesson and sources in parallel
+  // Start lesson on mount
   useEffect(() => {
     startLesson();
   }, [moduleNumber, challengeNumber]);
@@ -286,39 +284,18 @@ function LessonPage({ onComplete }) {
   const startLesson = async () => {
     try {
       setLoading(true);
-      setSourcesLoading(true);
       setError(null);
-      setSourcesError(null);
 
       const modNum = parseInt(moduleNumber);
       const chalNum = parseInt(challengeNumber);
 
-      // Fetch lesson and sources in PARALLEL
-      const [lessonResponse, sourcesResponse] = await Promise.allSettled([
-        api.startLesson(modNum, chalNum),
-        api.getLessonSources(modNum, chalNum)
-      ]);
+      // Start lesson (sources included in response)
+      const response = await api.startLesson(modNum, chalNum);
+      handleResponse(response);
 
-      // Handle lesson response
-      if (lessonResponse.status === 'fulfilled') {
-        handleResponse(lessonResponse.value);
-      } else {
-        console.error('Failed to start lesson:', lessonResponse.reason);
-        setError(lessonResponse.reason?.message || 'Failed to start lesson');
-      }
-
-      // Handle sources response (non-blocking)
-      if (sourcesResponse.status === 'fulfilled') {
-        const srcData = sourcesResponse.value;
-        if (srcData.attributions && srcData.attributions.length > 0) {
-          setSources(srcData.attributions);
-        }
-        if (srcData.error) {
-          setSourcesError(srcData.error);
-        }
-      } else {
-        console.error('Failed to fetch sources:', sourcesResponse.reason);
-        setSourcesError('Failed to load sources');
+      // Sources are now included in the lesson response
+      if (response.sources) {
+        setSources(response.sources);
       }
 
     } catch (err) {
@@ -326,7 +303,6 @@ function LessonPage({ onComplete }) {
       setError(err.message || 'Failed to start lesson');
     } finally {
       setLoading(false);
-      setSourcesLoading(false);
     }
   };
 
@@ -610,7 +586,7 @@ function LessonPage({ onComplete }) {
 
       {/* Main content - lesson fills space up to sources */}
       <div style={{
-        marginRight: sources.length > 0 || sourcesLoading ? '360px' : '48px',
+        marginRight: sources?.grounded && sources.sources?.length > 0 ? '240px' : '48px',
         marginLeft: '48px',
         padding: '100px 0 40px',
         position: 'relative',
@@ -870,156 +846,73 @@ function LessonPage({ onComplete }) {
         )}
         </div>
 
-        {/* Right: Sources Sidebar - Fixed on right edge */}
-        <div style={{
-          position: 'fixed',
-          right: '24px',
-          top: '100px',
-          width: '300px',
-          maxHeight: 'calc(100vh - 140px)',
-          overflowY: 'auto',
-          display: sources.length > 0 || sourcesLoading ? 'block' : 'none',
-          zIndex: 40
-        }}>
+        {/* Right: Sources Sidebar - Minimal "Further Reading" */}
+        {sources?.grounded && sources.sources?.length > 0 && (
           <div style={{
-            borderRadius: '16px',
-            background: 'linear-gradient(to bottom, rgba(10,10,18,0.95), rgba(8,8,16,0.98))',
-            border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-            overflow: 'hidden'
+            position: 'fixed',
+            right: '24px',
+            top: '100px',
+            width: '200px',
+            zIndex: 40
           }}>
-            {/* Sidebar header */}
             <div style={{
-              padding: '16px',
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px'
+              borderRadius: '12px',
+              background: 'rgba(10,10,18,0.9)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              padding: '12px'
             }}>
               <div style={{
-                width: '28px',
-                height: '28px',
-                borderRadius: '8px',
-                background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <svg style={{ width: '14px', height: '14px', color: 'white' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-                  Sources
-                </div>
-                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>
-                  Verified references
-                </div>
-              </div>
-            </div>
-
-            {/* Sources content */}
-            <div style={{ padding: '12px' }}>
-              {sourcesLoading ? (
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '24px',
-                  color: 'rgba(255,255,255,0.5)'
-                }}>
-                  <svg style={{ width: '20px', height: '20px', animation: 'spin 1s linear infinite', marginRight: '8px' }} fill="none" viewBox="0 0 24 24">
-                    <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  <span style={{ fontSize: '12px' }}>Finding sources...</span>
-                </div>
-              ) : sources.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {sources.map((source, idx) => (
-                    <a
-                      key={idx}
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        display: 'block',
-                        padding: '12px',
-                        borderRadius: '10px',
-                        background: 'rgba(6,182,212,0.08)',
-                        border: '1px solid rgba(6,182,212,0.2)',
-                        textDecoration: 'none',
-                        transition: 'all 0.2s'
-                      }}
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.background = 'rgba(6,182,212,0.15)';
-                        e.currentTarget.style.borderColor = 'rgba(6,182,212,0.4)';
-                        e.currentTarget.style.transform = 'translateY(-1px)';
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.background = 'rgba(6,182,212,0.08)';
-                        e.currentTarget.style.borderColor = 'rgba(6,182,212,0.2)';
-                        e.currentTarget.style.transform = 'translateY(0)';
-                      }}
-                    >
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        marginBottom: '6px'
-                      }}>
-                        <svg style={{ width: '12px', height: '12px', color: '#06b6d4', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                        <span style={{
-                          fontSize: '12px',
-                          fontWeight: 600,
-                          color: '#22d3ee',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap'
-                        }}>
-                          {source.concept}
-                        </span>
-                      </div>
-                      <p style={{
-                        fontSize: '12px',
-                        color: 'rgba(255,255,255,0.7)',
-                        margin: 0,
-                        lineHeight: 1.6
-                      }}>
-                        {source.description}
-                      </p>
-                    </a>
-                  ))}
-                </div>
-              ) : sourcesError ? (
-                <div style={{
-                  padding: '16px',
-                  fontSize: '12px',
-                  color: 'rgba(255,255,255,0.4)',
-                  textAlign: 'center'
-                }}>
-                  Could not load sources
-                </div>
-              ) : null}
-            </div>
-
-            {/* Footer note */}
-            {sources.length > 0 && (
-              <div style={{
-                padding: '12px 16px',
-                borderTop: '1px solid rgba(255,255,255,0.06)',
                 fontSize: '10px',
-                color: 'rgba(255,255,255,0.35)',
-                textAlign: 'center'
+                fontWeight: 600,
+                color: 'rgba(255,255,255,0.4)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                marginBottom: '10px'
               }}>
-                Sources verified via Google Search
+                Further Reading
               </div>
-            )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {sources.sources.map((source, idx) => (
+                  <a
+                    key={idx}
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      background: 'rgba(255,255,255,0.03)',
+                      textDecoration: 'none',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                    }}
+                  >
+                    <svg style={{ width: '10px', height: '10px', color: 'rgba(255,255,255,0.4)', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    <span style={{
+                      fontSize: '11px',
+                      color: 'rgba(255,255,255,0.6)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      {source.domain}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <style>{`
