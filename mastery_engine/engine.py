@@ -239,15 +239,15 @@ class MasteryEngine:
         core_concept = urac.get("understand", "")
         application = urac.get("apply", "")
 
-        # Focused grounding prompt - minimal tokens, clear purpose
-        prompt = f"""Find 2-3 authoritative sources for this technical concept:
+        # Grounding prompt - designed to trigger Google Search and get sources
+        prompt = f"""Search for authoritative information about: {topic}
 
-Topic: {topic}
-Core concept: {core_concept}
+I need:
+1. What {core_concept} means and how it works
+2. Real-world examples from companies using this (with specific numbers/scale if available)
+3. Best practices from official documentation
 
-Requirements:
-1. Official documentation or industry leaders only
-2. Include one real-world usage fact with numbers if available"""
+Provide a brief summary with sources."""
 
         try:
             start_time = time.time()
@@ -289,20 +289,29 @@ Requirements:
         }
 
         if not response.candidates:
+            print("   ⚠️ No candidates in grounding response")
             return result
 
-        metadata = response.candidates[0].grounding_metadata
+        candidate = response.candidates[0]
+        metadata = getattr(candidate, 'grounding_metadata', None)
         response_text = response.text or ""
 
+        print(f"   📊 Grounding response: {len(response_text)} chars")
+        print(f"   📊 Has metadata: {metadata is not None}")
+
         if not metadata:
+            # Still mark as grounded if we got a response, just no metadata
+            result["grounded"] = True
+            result["industry_insight"] = self._extract_industry_insight(response_text)
             return result
 
         result["grounded"] = True
 
-        # Extract sources from groundingChunks (reliable, no parsing needed)
-        seen_domains = set()
+        # Extract sources from groundingChunks
         chunks = getattr(metadata, 'grounding_chunks', None) or []
+        print(f"   📊 Grounding chunks: {len(chunks)}")
 
+        seen_domains = set()
         for chunk in chunks:
             if len(result["sources"]) >= 3:
                 break
@@ -383,18 +392,13 @@ Requirements:
         """Format grounding context for injection into system prompt."""
         grounding = self.get_grounding_context()
 
-        if not grounding.get("grounded"):
-            return "# INDUSTRY CONTEXT\n\n(No industry data available - use your knowledge of industry practices instead)"
+        if not grounding.get("grounded") or not grounding.get("industry_insight"):
+            # No grounding available - skip industry reference requirement
+            return ""
 
-        lines = ["# INDUSTRY CONTEXT"]
-
-        if grounding.get("industry_insight"):
-            lines.append(f"\n**Industry Fact:** {grounding['industry_insight']}")
-
-        if grounding.get("sources"):
-            lines.append("\n**Source Organizations:**")
-            for src in grounding["sources"]:
-                lines.append(f"- {src['domain']}")
+        lines = ["# INDUSTRY CONTEXT (USE THIS IN DEEPEN PHASE)"]
+        lines.append(f"\n**Use this fact:** {grounding['industry_insight']}")
+        lines.append("\nYou MUST use this specific fact in DEEPEN phase. Do NOT invent other company examples.")
 
         return "\n".join(lines)
 
@@ -652,18 +656,14 @@ Set `current_phase: "ENGAGE"`
 When transitioning from ENGAGE:
 1. Acknowledge their answer briefly (1 sentence)
 2. Expand with MORE detail - add a visual, formula, or table
-3. **Include ONE industry reference from the INDUSTRY CONTEXT section** - this is REQUIRED
+3. If INDUSTRY CONTEXT section exists above, include it using this EXACT format:
+   > **Industry Insight:** [the fact from INDUSTRY CONTEXT]
 4. Then ask the Analytical Question based on: "{urac.get("retain", "")}"
 
-**Industry reference formats (these areexamples, you can use any of these or come up with your own):**
-- Scale insight: "Spotify's 150 engineering teams each manage their own [X], deploying independently..."
-- Origin story: "Google created this pattern when they needed to..."
-- Adoption context: "This became the standard after companies like [X] proved..."
-- Problem framing: "Before [concept], teams at Netflix struggled with..."
-- Quantified impact: "At scale, this handles [X million] requests because..."
-- Design rationale: "The reason [major company] built it this way was..."
-
-Place the industry reference where it reinforces understanding—before the key insight, as the key insight itself, or as context for the analytical question.
+**IMPORTANT:**
+- If INDUSTRY CONTEXT is provided, you MUST include it as a blockquote with the exact format shown above
+- Do NOT invent company examples or statistics - only use what's provided
+- If no INDUSTRY CONTEXT is provided, skip the Industry Insight blockquote entirely
 
 **How to frame the analytical question (IMPORTANT):**
 - DON'T ask abstract "why" questions that feel like a test

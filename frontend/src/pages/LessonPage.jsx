@@ -586,7 +586,7 @@ function LessonPage({ onComplete }) {
 
       {/* Main content - lesson fills space up to sources */}
       <div style={{
-        marginRight: sources?.grounded && sources.sources?.length > 0 ? '240px' : '48px',
+        marginRight: sources?.grounded && (sources.sources?.length > 0 || sources.industry_insight) ? '260px' : '48px',
         marginLeft: '48px',
         padding: '100px 0 40px',
         position: 'relative',
@@ -846,70 +846,103 @@ function LessonPage({ onComplete }) {
         )}
         </div>
 
-        {/* Right: Sources Sidebar - Minimal "Further Reading" */}
-        {sources?.grounded && sources.sources?.length > 0 && (
+        {/* Right: Sources Sidebar - Shows when grounded (has sources or insight) */}
+        {sources?.grounded && (sources.sources?.length > 0 || sources.industry_insight) && (
           <div style={{
             position: 'fixed',
             right: '24px',
             top: '100px',
-            width: '200px',
+            width: '220px',
             zIndex: 40
           }}>
             <div style={{
               borderRadius: '12px',
-              background: 'rgba(10,10,18,0.9)',
-              border: '1px solid rgba(255,255,255,0.06)',
-              padding: '12px'
+              background: 'rgba(10,10,18,0.95)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              overflow: 'hidden'
             }}>
-              <div style={{
-                fontSize: '10px',
-                fontWeight: 600,
-                color: 'rgba(255,255,255,0.4)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                marginBottom: '10px'
-              }}>
-                Further Reading
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {sources.sources.map((source, idx) => (
-                  <a
-                    key={idx}
-                    href={source.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      background: 'rgba(255,255,255,0.03)',
-                      textDecoration: 'none',
-                      transition: 'background 0.2s'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                    }}
-                  >
-                    <svg style={{ width: '10px', height: '10px', color: 'rgba(255,255,255,0.4)', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                    <span style={{
-                      fontSize: '11px',
-                      color: 'rgba(255,255,255,0.6)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {source.domain}
-                    </span>
-                  </a>
-                ))}
-              </div>
+              {/* Industry insight if available */}
+              {sources.industry_insight && (
+                <div style={{
+                  padding: '14px',
+                  borderBottom: sources.sources?.length > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                  background: 'rgba(139,92,246,0.06)'
+                }}>
+                  <div style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    color: 'rgba(139,92,246,0.8)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    marginBottom: '8px'
+                  }}>
+                    Industry Context
+                  </div>
+                  <p style={{
+                    fontSize: '12px',
+                    color: 'rgba(255,255,255,0.75)',
+                    margin: 0,
+                    lineHeight: 1.5
+                  }}>
+                    {sources.industry_insight}
+                  </p>
+                </div>
+              )}
+
+              {/* Source links if available */}
+              {sources.sources?.length > 0 && (
+                <div style={{ padding: '12px' }}>
+                  <div style={{
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    color: 'rgba(255,255,255,0.4)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.05em',
+                    marginBottom: '8px'
+                  }}>
+                    Sources
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {sources.sources.map((source, idx) => (
+                      <a
+                        key={idx}
+                        href={source.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          background: 'rgba(255,255,255,0.03)',
+                          textDecoration: 'none',
+                          transition: 'background 0.2s'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                        }}
+                      >
+                        <svg style={{ width: '10px', height: '10px', color: 'rgba(255,255,255,0.4)', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        <span style={{
+                          fontSize: '11px',
+                          color: 'rgba(255,255,255,0.6)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {source.domain}
+                        </span>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
