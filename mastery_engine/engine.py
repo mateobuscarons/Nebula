@@ -239,15 +239,15 @@ class MasteryEngine:
         core_concept = urac.get("understand", "")
         application = urac.get("apply", "")
 
-        # Grounding prompt - designed to trigger Google Search and get sources
-        prompt = f"""Search for authoritative information about: {topic}
+        # Grounding prompt - get sources + one verifiable industry fact
+        prompt = f"""Search for: {topic}
 
-I need:
-1. What {core_concept} means and how it works
-2. Real-world examples from companies using this (with specific numbers/scale if available)
-3. Best practices from official documentation
+Find ONE specific, verifiable fact showing real-world importance - either:
+- A statistic (e.g., "X% of companies use...", "processes Y million requests...")
+- A company example (e.g., "Netflix uses this to handle...", "Airbnb implemented...")
+- An expert quote or industry report finding
 
-Provide a brief summary with sources."""
+Then briefly explain: {core_concept}"""
 
         try:
             start_time = time.time()
@@ -258,7 +258,7 @@ Provide a brief summary with sources."""
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(google_search=types.GoogleSearch())],
                     temperature=0.0,
-                    max_output_tokens=400,
+                    max_output_tokens=1000,  # Needs 800+ to get grounding_chunks
                 ),
             )
 
@@ -281,10 +281,11 @@ Provide a brief summary with sources."""
             return self._lesson_grounding
 
     def _parse_grounding_response(self, response, topic: str) -> Dict[str, Any]:
-        """Extract sources and industry insight from grounding response."""
+        """Extract sources and cited industry insight from grounding response."""
         result = {
             "sources": [],
             "industry_insight": None,
+            "insight_source": None,  # URL backing the insight
             "grounded": False,
         }
 
@@ -300,45 +301,106 @@ Provide a brief summary with sources."""
         print(f"   📊 Has metadata: {metadata is not None}")
 
         if not metadata:
-            # Still mark as grounded if we got a response, just no metadata
             result["grounded"] = True
-            result["industry_insight"] = self._extract_industry_insight(response_text)
             return result
 
         result["grounded"] = True
 
         # Extract sources from groundingChunks
         chunks = getattr(metadata, 'grounding_chunks', None) or []
-        print(f"   📊 Grounding chunks: {len(chunks)}")
+        supports = getattr(metadata, 'grounding_supports', None) or []
+        print(f"   📊 Grounding chunks: {len(chunks)}, supports: {len(supports)}")
 
+        # Build chunk index -> source info map
+        chunk_sources = {}
+        for i, chunk in enumerate(chunks):
+            if hasattr(chunk, 'web') and chunk.web:
+                web = chunk.web
+                url = getattr(web, 'uri', None)
+                domain = getattr(web, 'domain', None) or getattr(web, 'title', None) or ""
+                domain = domain.replace('www.', '') if domain else ""
+                if url and domain:
+                    chunk_sources[i] = {"url": url, "domain": domain}
+
+        # Extract unique sources for "further reading"
         seen_domains = set()
-        for chunk in chunks:
+        for i, info in chunk_sources.items():
             if len(result["sources"]) >= 3:
                 break
+            if info["domain"] not in seen_domains:
+                seen_domains.add(info["domain"])
+                result["sources"].append({
+                    "title": info["domain"],
+                    "url": info["url"],
+                    "domain": info["domain"],
+                })
 
-            if not hasattr(chunk, 'web') or not chunk.web:
+        # Find the best cited fact from grounding_supports
+        # grounding_supports links text segments to their source chunks
+        best_insight = None
+        best_source = None
+        fallback_insight = None
+        fallback_source = None
+
+        for support in supports:
+            segment = getattr(support, 'segment', None)
+            chunk_indices = getattr(support, 'grounding_chunk_indices', None) or []
+
+            if not segment or not chunk_indices:
                 continue
 
-            web = chunk.web
-            url = getattr(web, 'uri', None)
-            title = getattr(web, 'title', None)
-
-            if not url:
+            text = getattr(segment, 'text', None)
+            if not text or len(text) < 30 or len(text) > 300:
                 continue
 
-            domain = self._extract_domain(url)
-            if domain in seen_domains:
-                continue
-            seen_domains.add(domain)
+            # Get the source for this segment
+            source_idx = chunk_indices[0] if chunk_indices else None
+            if source_idx is not None and source_idx in chunk_sources:
+                source = chunk_sources[source_idx]
 
-            result["sources"].append({
-                "title": title or domain,
-                "url": url,
-                "domain": domain,
-            })
+                # Keep first valid segment as fallback
+                if fallback_insight is None:
+                    fallback_insight = {'text': text, 'score': 0}
+                    fallback_source = source
 
-        # Extract industry insight (sentence with numbers/scale)
-        result["industry_insight"] = self._extract_industry_insight(response_text)
+                # Prefer facts with numbers/stats or company names
+                text_lower = text.lower()
+                has_number = bool(re.search(r'\d+', text))
+                has_company = any(c in text_lower for c in [
+                    'netflix', 'google', 'amazon', 'microsoft', 'airbnb', 'uber',
+                    'spotify', 'linkedin', 'company', 'companies', 'enterprise'
+                ])
+                has_stat_word = any(w in text_lower for w in [
+                    'percent', '%', 'million', 'billion', 'adoption', 'use', 'report'
+                ])
+
+                # Score this insight
+                score = 0
+                if has_number:
+                    score += 2
+                if has_company:
+                    score += 2
+                if has_stat_word:
+                    score += 1
+
+                if score > 0 and (best_insight is None or score > best_insight.get('score', 0)):
+                    best_insight = {'text': text, 'score': score}
+                    best_source = source
+
+        # Fall back to first cited segment if no scored insight found
+        if not best_insight and fallback_insight:
+            best_insight = fallback_insight
+            best_source = fallback_source
+
+        if best_insight:
+            # Clean up markdown and bullet points
+            clean = best_insight['text']
+            clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', clean)  # Bold
+            clean = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean)  # Links
+            clean = re.sub(r'^\s*[\*\-•]\s+', '', clean)  # Leading bullets
+            clean = re.sub(r'\n\s*[\*\-•]\s+', ' ', clean)  # Mid-text bullets
+            result["industry_insight"] = clean.strip()
+            result["insight_source"] = best_source.get("url") if best_source else None
 
         return result
 
@@ -351,36 +413,35 @@ Provide a brief summary with sources."""
         except Exception:
             return ""
 
-    def _extract_industry_insight(self, text: str) -> Optional[str]:
+    def _extract_first_paragraph(self, text: str) -> Optional[str]:
         """
-        Find a compelling industry insight with numbers/scale.
-        Look for sentences that provide real-world context.
+        Extract the first meaningful paragraph from Gemini's response.
+        Trusts Gemini to provide relevant industry context.
         """
-        # Split into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        if not text:
+            return None
 
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
-                continue
+        # Clean up markdown formatting
+        clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+        clean = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean)
 
-            # Must have reasonable length
-            if not (40 < len(sentence) < 200):
-                continue
+        # Split into paragraphs and get the first non-empty one
+        paragraphs = [p.strip() for p in clean.split('\n\n') if p.strip()]
 
-            # Look for quantifiable data
-            has_number = bool(re.search(r'\d+', sentence))
-            has_scale_word = any(w in sentence.lower() for w in [
-                'million', 'billion', 'percent', '%', 'companies',
-                'organizations', 'daily', 'per day', 'per second',
-                'users', 'requests', 'transactions', 'teams'
-            ])
-
-            if has_number and has_scale_word:
-                # Clean up any markdown
-                clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', sentence)
-                clean = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean)
-                return clean.strip()
+        if paragraphs:
+            first = paragraphs[0]
+            # Limit to reasonable length for display
+            if len(first) > 300:
+                # Cut at sentence boundary
+                sentences = re.split(r'(?<=[.!?])\s+', first)
+                result = ""
+                for s in sentences:
+                    if len(result) + len(s) < 300:
+                        result += s + " "
+                    else:
+                        break
+                return result.strip() if result else first[:300] + "..."
+            return first
 
         return None
 

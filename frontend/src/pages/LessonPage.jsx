@@ -886,6 +886,25 @@ function LessonPage({ onComplete }) {
                   }}>
                     {sources.industry_insight}
                   </p>
+                  {sources.insight_source && (
+                    <a
+                      href={sources.insight_source}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-block',
+                        marginTop: '8px',
+                        fontSize: '10px',
+                        color: 'rgba(139,92,246,0.7)',
+                        textDecoration: 'none',
+                        transition: 'color 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.color = 'rgba(139,92,246,1)'}
+                      onMouseLeave={(e) => e.target.style.color = 'rgba(139,92,246,0.7)'}
+                    >
+                      View source →
+                    </a>
+                  )}
                 </div>
               )}
 

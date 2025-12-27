@@ -150,6 +150,7 @@ class LessonSources(BaseModel):
     """Sources grounding for a lesson"""
     sources: list[LessonSource] = []
     industry_insight: Optional[str] = None
+    insight_source: Optional[str] = None  # URL backing the insight
     grounded: bool = False
 
 
@@ -739,6 +740,7 @@ def start_lesson(request: LessonStartRequest, user_id: str = Depends(get_current
             sources_data = LessonSources(
                 sources=[LessonSource(**s) for s in grounding_result.get("sources", [])],
                 industry_insight=grounding_result.get("industry_insight"),
+                insight_source=grounding_result.get("insight_source"),
                 grounded=True
             )
 
