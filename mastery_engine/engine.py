@@ -220,13 +220,15 @@ class MasteryEngine:
         """
         Ground the lesson on authoritative sources BEFORE teaching.
 
-        Uses the pre-defined URAC blueprint to find relevant sources.
-        Returns sources + optional industry insight to be injected into teaching context.
+        Runs TWO parallel searches:
+        1. Industry insight search - finds statistics/company examples
+        2. Learning resources search - finds quality educational content
 
         Returns:
             {
-                "sources": [{"title": str, "url": str, "domain": str}],
+                "sources": [{"title": str, "url": str, "domain": str, "description": str}],
                 "industry_insight": str or None,
+                "insight_source": str or None,
                 "grounded": bool
             }
         """
@@ -237,39 +239,60 @@ class MasteryEngine:
         topic = lesson.get("topic", "")
         urac = lesson.get("urac_blueprint", {})
         core_concept = urac.get("understand", "")
-        application = urac.get("apply", "")
 
-        # Grounding prompt - get sources + one verifiable industry fact
-        prompt = f"""Search for: {topic}
+        # Two separate prompts for different purposes
+        insight_prompt = f"""Search for: {topic} industry statistics OR company case study
 
 Find ONE specific, verifiable fact showing real-world importance - either:
 - A statistic (e.g., "X% of companies use...", "processes Y million requests...")
 - A company example (e.g., "Netflix uses this to handle...", "Airbnb implemented...")
 - An expert quote or industry report finding
 
-Then briefly explain: {core_concept}"""
+Keep response brief - just the fact and its source."""
+
+        resources_prompt = f"""Search for: {topic} research OR study OR expert analysis OR authoritative guide
+
+Find authoritative sources that explain or validate {topic}. Look for:
+- Research papers or academic sources
+- Industry reports or expert analysis
+- Authoritative publications (Harvard Business Review, McKinsey, etc.)
+- Well-regarded explanations from recognized experts
+
+Prioritize credibility and depth over simplicity. List 3 high-quality sources."""
 
         try:
+            import concurrent.futures
             start_time = time.time()
 
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    tools=[types.Tool(google_search=types.GoogleSearch())],
-                    temperature=0.0,
-                    max_output_tokens=1000,  # Needs 800+ to get grounding_chunks
-                ),
-            )
+            # Run both searches in parallel
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                insight_future = executor.submit(self._fetch_grounding, insight_prompt)
+                resources_future = executor.submit(self._fetch_grounding, resources_prompt)
+
+                insight_response = insight_future.result()
+                resources_response = resources_future.result()
 
             duration = time.time() - start_time
-            result = self._parse_grounding_response(response, topic)
-            result["fetch_time_seconds"] = round(duration, 2)
+
+            # Parse insight response for the industry fact
+            insight_result = self._parse_insight_response(insight_response)
+
+            # Parse resources response for learning materials
+            resources_result = self._parse_resources_response(resources_response, topic)
+
+            # Combine results
+            result = {
+                "sources": resources_result.get("sources", []),
+                "industry_insight": insight_result.get("industry_insight"),
+                "insight_source": insight_result.get("insight_source"),
+                "grounded": True,
+                "fetch_time_seconds": round(duration, 2),
+            }
 
             # Cache for this lesson
             self._lesson_grounding = result
 
-            print(f"\n🔍 Grounded '{topic}': {len(result['sources'])} sources ({duration:.1f}s)")
+            print(f"\n🔍 Grounded '{topic}': {len(result['sources'])} resources ({duration:.1f}s)")
             if result.get("industry_insight"):
                 print(f"   💡 Insight: {result['industry_insight'][:60]}...")
 
@@ -279,6 +302,144 @@ Then briefly explain: {core_concept}"""
             print(f"\n⚠️ Grounding error: {e}")
             self._lesson_grounding = {"sources": [], "industry_insight": None, "grounded": False, "error": str(e)}
             return self._lesson_grounding
+
+    def _fetch_grounding(self, prompt: str):
+        """Execute a single grounding search."""
+        return self.client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                temperature=0.0,
+                max_output_tokens=1000,
+            ),
+        )
+
+    def _parse_insight_response(self, response) -> Dict[str, Any]:
+        """Extract industry insight from the insight-focused search."""
+        result = {"industry_insight": None, "insight_source": None}
+
+        if not response or not response.candidates:
+            return result
+
+        candidate = response.candidates[0]
+        metadata = getattr(candidate, 'grounding_metadata', None)
+
+        if not metadata:
+            return result
+
+        chunks = getattr(metadata, 'grounding_chunks', None) or []
+        supports = getattr(metadata, 'grounding_supports', None) or []
+
+        # Build chunk index -> source map
+        chunk_sources = {}
+        for i, chunk in enumerate(chunks):
+            if hasattr(chunk, 'web') and chunk.web:
+                web = chunk.web
+                url = getattr(web, 'uri', None)
+                if url:
+                    chunk_sources[i] = url
+
+        # Find best cited fact
+        best_insight = None
+        best_source = None
+
+        for support in supports:
+            segment = getattr(support, 'segment', None)
+            chunk_indices = getattr(support, 'grounding_chunk_indices', None) or []
+
+            if not segment or not chunk_indices:
+                continue
+
+            text = getattr(segment, 'text', None)
+            if not text or len(text) < 30 or len(text) > 300:
+                continue
+
+            source_idx = chunk_indices[0] if chunk_indices else None
+            if source_idx is not None and source_idx in chunk_sources:
+                # Score this insight - prefer stats and company names
+                text_lower = text.lower()
+                has_number = bool(re.search(r'\d+', text))
+                has_company = any(c in text_lower for c in [
+                    'netflix', 'google', 'amazon', 'microsoft', 'airbnb', 'uber',
+                    'spotify', 'linkedin', 'company', 'companies', 'enterprise'
+                ])
+
+                score = (2 if has_number else 0) + (2 if has_company else 0)
+
+                if best_insight is None or score > best_insight.get('score', 0):
+                    best_insight = {'text': text, 'score': score}
+                    best_source = chunk_sources[source_idx]
+
+        if best_insight:
+            clean = best_insight['text']
+            clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', clean)
+            clean = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', clean)
+            clean = re.sub(r'^\s*[\*\-•]\s+', '', clean)
+            result["industry_insight"] = clean.strip()
+            result["insight_source"] = best_source
+
+        return result
+
+    def _parse_resources_response(self, response, topic: str) -> Dict[str, Any]:
+        """Extract learning resources from the resources-focused search."""
+        result = {"sources": []}
+
+        if not response or not response.candidates:
+            return result
+
+        candidate = response.candidates[0]
+        metadata = getattr(candidate, 'grounding_metadata', None)
+
+        if not metadata:
+            return result
+
+        chunks = getattr(metadata, 'grounding_chunks', None) or []
+        supports = getattr(metadata, 'grounding_supports', None) or []
+
+        # Build chunk index -> source info map
+        chunk_sources = {}
+        for i, chunk in enumerate(chunks):
+            if hasattr(chunk, 'web') and chunk.web:
+                web = chunk.web
+                url = getattr(web, 'uri', None)
+                domain = getattr(web, 'domain', None) or ""
+                title = getattr(web, 'title', None) or ""
+                domain = domain.replace('www.', '') if domain else ""
+                if url and domain:
+                    chunk_sources[i] = {"url": url, "domain": domain, "title": title}
+
+        # Map chunk indices to their support text (for descriptions)
+        chunk_descriptions = {}
+        for support in supports:
+            segment = getattr(support, 'segment', None)
+            chunk_indices = getattr(support, 'grounding_chunk_indices', None) or []
+            if segment and chunk_indices:
+                text = getattr(segment, 'text', None)
+                if text and 20 < len(text) < 150:
+                    for idx in chunk_indices:
+                        if idx not in chunk_descriptions:
+                            chunk_descriptions[idx] = text
+
+        # Extract unique sources
+        seen_domains = set()
+        for i, info in chunk_sources.items():
+            if len(result["sources"]) >= 3:
+                break
+            if info["domain"] not in seen_domains:
+                seen_domains.add(info["domain"])
+                description = chunk_descriptions.get(i) or info.get("title") or None
+                if description:
+                    description = re.sub(r'\*\*([^*]+)\*\*', r'\1', description)
+                    description = description[:120] + "..." if len(description) > 120 else description
+                result["sources"].append({
+                    "title": info["domain"],
+                    "url": info["url"],
+                    "domain": info["domain"],
+                    "description": description,
+                })
+
+        return result
 
     def _parse_grounding_response(self, response, topic: str) -> Dict[str, Any]:
         """Extract sources and cited industry insight from grounding response."""
@@ -318,9 +479,22 @@ Then briefly explain: {core_concept}"""
                 web = chunk.web
                 url = getattr(web, 'uri', None)
                 domain = getattr(web, 'domain', None) or getattr(web, 'title', None) or ""
+                title = getattr(web, 'title', None) or ""
                 domain = domain.replace('www.', '') if domain else ""
                 if url and domain:
-                    chunk_sources[i] = {"url": url, "domain": domain}
+                    chunk_sources[i] = {"url": url, "domain": domain, "title": title}
+
+        # Map chunk indices to their support text (for descriptions)
+        chunk_descriptions = {}
+        for support in supports:
+            segment = getattr(support, 'segment', None)
+            chunk_indices = getattr(support, 'grounding_chunk_indices', None) or []
+            if segment and chunk_indices:
+                text = getattr(segment, 'text', None)
+                if text and 20 < len(text) < 150:
+                    for idx in chunk_indices:
+                        if idx not in chunk_descriptions:
+                            chunk_descriptions[idx] = text
 
         # Extract unique sources for "further reading"
         seen_domains = set()
@@ -329,10 +503,16 @@ Then briefly explain: {core_concept}"""
                 break
             if info["domain"] not in seen_domains:
                 seen_domains.add(info["domain"])
+                # Get description from mapped supports, or use title
+                description = chunk_descriptions.get(i) or info.get("title") or None
+                if description:
+                    description = re.sub(r'\*\*([^*]+)\*\*', r'\1', description)  # Remove bold
+                    description = description[:120] + "..." if len(description) > 120 else description
                 result["sources"].append({
                     "title": info["domain"],
                     "url": info["url"],
                     "domain": info["domain"],
+                    "description": description,
                 })
 
         # Find the best cited fact from grounding_supports
@@ -457,9 +637,25 @@ Then briefly explain: {core_concept}"""
             # No grounding available - skip industry reference requirement
             return ""
 
-        lines = ["# INDUSTRY CONTEXT (USE THIS IN DEEPEN PHASE)"]
-        lines.append(f"\n**Use this fact:** {grounding['industry_insight']}")
-        lines.append("\nYou MUST use this specific fact in DEEPEN phase. Do NOT invent other company examples.")
+        lines = ["# REAL-WORLD CONTEXT (MUST use in DEEPEN phase)"]
+        lines.append(f"\n**Verified fact:** {grounding['industry_insight']}")
+        lines.append("""
+**When to use:** In DEEPEN phase, AFTER expanding on the concept but BEFORE your analytical question.
+
+**How to integrate this insight:**
+1. Write a TRANSITION HOOK - 1-2 sentences that bridge from the concept to real-world relevance
+2. Immediately follow with the insight in a blockquote:
+   > **Industry Insight:** [the fact, rewritten to flow naturally from your hook]
+
+**Good example:**
+"This pattern becomes critical at scale. When systems handle millions of requests, graceful failure handling isn't optional—it's survival."
+> **Industry Insight:** Netflix uses this exact approach to serve 200 million subscribers, routing around failures in milliseconds.
+
+**Bad example (don't do this):**
+"Here's an industry insight:"
+> **Industry Insight:** Netflix uses this...
+
+The transition should make the insight feel like natural proof, not a bolted-on fact. Do NOT invent other examples.""")
 
         return "\n".join(lines)
 
@@ -717,14 +913,14 @@ Set `current_phase: "ENGAGE"`
 When transitioning from ENGAGE:
 1. Acknowledge their answer briefly (1 sentence)
 2. Expand with MORE detail - add a visual, formula, or table
-3. If INDUSTRY CONTEXT section exists above, include it using this EXACT format:
-   > **Industry Insight:** [the fact from INDUSTRY CONTEXT]
+3. If REAL-WORLD CONTEXT section exists above, integrate it here (see that section for format)
 4. Then ask the Analytical Question based on: "{urac.get("retain", "")}"
 
 **IMPORTANT:**
-- If INDUSTRY CONTEXT is provided, you MUST include it as a blockquote with the exact format shown above
+- If REAL-WORLD CONTEXT is provided, you MUST include it in DEEPEN with a transition hook + blockquote
+- The insight goes AFTER your expanded explanation, BEFORE your analytical question
 - Do NOT invent company examples or statistics - only use what's provided
-- If no INDUSTRY CONTEXT is provided, skip the Industry Insight blockquote entirely
+- If no REAL-WORLD CONTEXT is provided, skip the Industry Insight blockquote entirely
 
 **How to frame the analytical question (IMPORTANT):**
 - DON'T ask abstract "why" questions that feel like a test

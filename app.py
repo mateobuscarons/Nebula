@@ -144,6 +144,7 @@ class LessonSource(BaseModel):
     title: str
     url: str
     domain: str
+    description: Optional[str] = None  # Brief description of what this source covers
 
 
 class LessonSources(BaseModel):
