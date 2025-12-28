@@ -186,6 +186,47 @@ class Database:
             raise last_error
 
     # ============================================================
+    # DEV MODE HELPERS
+    # ============================================================
+
+    def ensure_dev_user_exists(self, dev_user_id: str = "00000000-0000-0000-0000-000000000001"):
+        """
+        Ensure dev user exists in auth.users table for local development.
+        Creates the user if it doesn't exist.
+        """
+        try:
+            # Check if user exists in auth.users (Supabase managed)
+            check_query = "SELECT id FROM auth.users WHERE id = %s"
+            existing = self._execute_query(check_query, (dev_user_id,), fetch_one=True)
+
+            if not existing:
+                # Insert dev user into auth.users
+                insert_query = """
+                    INSERT INTO auth.users (
+                        id, instance_id, aud, role, email,
+                        encrypted_password, email_confirmed_at,
+                        created_at, updated_at, confirmation_token,
+                        email_change, email_change_token_new, recovery_token
+                    )
+                    VALUES (
+                        %s, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'dev@localhost',
+                        '', NOW(),
+                        NOW(), NOW(), '',
+                        '', '', ''
+                    )
+                    ON CONFLICT (id) DO NOTHING
+                """
+                self._execute_query(insert_query, (dev_user_id,), fetch_one=False)
+                print(f"🔧 Created dev user in auth.users: {dev_user_id}")
+        except Exception as e:
+            # If auth.users doesn't exist or we can't insert, just log and continue
+            # The FK might be disabled or pointing elsewhere
+            print(f"⚠️ Could not create dev user in auth.users: {e}")
+            print("   Continuing anyway - FK constraint may be different")
+
+        return dev_user_id
+
+    # ============================================================
     # USER PROFILE OPERATIONS
     # ============================================================
 

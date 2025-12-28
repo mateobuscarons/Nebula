@@ -276,9 +276,21 @@ function LessonPage({ onComplete }) {
   // Sources state (from lesson response)
   const [sources, setSources] = useState(null);
 
+  // Ref to prevent double API calls (React StrictMode)
+  const lessonStartedRef = useRef(false);
+
   // Start lesson on mount
   useEffect(() => {
+    // Prevent duplicate calls from StrictMode
+    if (lessonStartedRef.current) return;
+    lessonStartedRef.current = true;
+
     startLesson();
+
+    // Reset ref on cleanup for route changes
+    return () => {
+      lessonStartedRef.current = false;
+    };
   }, [moduleNumber, challengeNumber]);
 
   const startLesson = async () => {
@@ -586,14 +598,14 @@ function LessonPage({ onComplete }) {
 
       {/* Main content - lesson fills space up to sources */}
       <div style={{
-        marginRight: sources?.grounded && (sources.sources?.length > 0 || sources.insight_source) ? '300px' : '80px',
-        marginLeft: '100px',
+        marginRight: sources?.grounded && (sources.sources?.length > 0 || sources.insight_source) ? '340px' : '60px',
+        marginLeft: '160px',
         padding: '100px 0 40px',
         position: 'relative',
         zIndex: 10
       }}>
         {/* Lesson content */}
-        <div style={{ width: '100%', maxWidth: '900px' }}>
+        <div style={{ width: '100%' }}>
         {/* Completion banner */}
         {isCompleted && (
           <div style={{
@@ -846,105 +858,102 @@ function LessonPage({ onComplete }) {
         )}
         </div>
 
-        {/* Right: Sources Sidebar - Shows when grounded (has sources or insight) */}
+        {/* Right: Sources Sidebar - Unified sources block */}
         {sources?.grounded && (sources.sources?.length > 0 || sources.insight_source) && (
           <div style={{
             position: 'fixed',
             right: '24px',
             top: '100px',
-            width: '260px',
+            width: '300px',
             zIndex: 40
           }}>
             <div style={{
               borderRadius: '12px',
               background: 'rgba(10,10,18,0.95)',
               border: '1px solid rgba(255,255,255,0.08)',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              padding: '16px'
             }}>
-              {/* Industry insight source link - compact version */}
-              {sources.insight_source && (
-                <a
-                  href={sources.insight_source}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '14px 16px',
-                    borderBottom: sources.sources?.length > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none',
-                    background: 'rgba(139,92,246,0.06)',
-                    textDecoration: 'none',
-                    transition: 'background 0.2s'
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.background = 'rgba(139,92,246,0.12)'}
-                  onMouseOut={(e) => e.currentTarget.style.background = 'rgba(139,92,246,0.06)'}
-                >
-                  <svg style={{ width: '14px', height: '14px', color: 'rgba(139,92,246,0.8)', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontSize: '11px',
-                      fontWeight: 600,
-                      color: 'rgba(139,92,246,0.9)',
-                      marginBottom: '2px'
-                    }}>
-                      Industry Insight Source
+              <div style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                color: 'rgba(255,255,255,0.5)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                marginBottom: '12px'
+              }}>
+                Sources
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {/* Insight source first (if exists, has domain, and not already in resources) */}
+                {sources.insight_source && sources.insight_domain &&
+                 !sources.sources?.some(s => s.domain === sources.insight_domain) && (
+                  <a
+                    href={sources.insight_source}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      background: 'rgba(255,255,255,0.03)',
+                      textDecoration: 'none',
+                      transition: 'background 0.2s'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                    onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                  >
+                    <svg style={{ width: '12px', height: '12px', color: 'rgba(255,255,255,0.4)', flexShrink: 0, marginTop: '2px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        color: 'rgba(255,255,255,0.75)',
+                        marginBottom: '4px'
+                      }}>
+                        {sources.insight_domain}
+                      </div>
+                      {sources.insight_description && (
+                        <div style={{
+                          fontSize: '11px',
+                          color: 'rgba(255,255,255,0.45)',
+                          lineHeight: 1.4,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden'
+                        }}>
+                          {sources.insight_description}
+                        </div>
+                      )}
                     </div>
-                    <div style={{
-                      fontSize: '10px',
-                      color: 'rgba(255,255,255,0.5)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap'
-                    }}>
-                      {new URL(sources.insight_source).hostname.replace('www.', '')}
-                    </div>
-                  </div>
-                  <svg style={{ width: '12px', height: '12px', color: 'rgba(139,92,246,0.6)', flexShrink: 0 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                  </svg>
-                </a>
-              )}
+                  </a>
+                )}
 
-              {/* Source links - Further Reading */}
-              {sources.sources?.length > 0 && (
-                <div style={{ padding: '16px' }}>
-                  <div style={{
-                    fontSize: '11px',
-                    fontWeight: 600,
-                    color: 'rgba(255,255,255,0.5)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.05em',
-                    marginBottom: '12px'
-                  }}>
-                    Further Reading
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {sources.sources.map((source, idx) => (
-                      <a
-                        key={idx}
-                        href={source.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'flex-start',
-                          gap: '10px',
-                          padding: '12px',
-                          borderRadius: '8px',
-                          background: 'rgba(255,255,255,0.03)',
-                          textDecoration: 'none',
-                          transition: 'background 0.2s, transform 0.2s'
-                        }}
-                        onMouseOver={(e) => {
-                          e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
-                        }}
-                        onMouseOut={(e) => {
-                          e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
-                        }}
-                      >
+                {/* Other sources */}
+                {sources.sources?.map((source, idx) => (
+                    <a
+                      key={idx}
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '10px',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        background: 'rgba(255,255,255,0.03)',
+                        textDecoration: 'none',
+                        transition: 'background 0.2s'
+                      }}
+                      onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                      onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                    >
                         <svg style={{ width: '12px', height: '12px', color: 'rgba(255,255,255,0.4)', flexShrink: 0, marginTop: '2px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
@@ -975,10 +984,9 @@ function LessonPage({ onComplete }) {
                           )}
                         </div>
                       </a>
-                    ))}
-                  </div>
-                </div>
-              )}
+                ))}
+
+              </div>
             </div>
           </div>
         )}

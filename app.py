@@ -74,6 +74,14 @@ async def get_current_user(authorization: str = Header(None)) -> str:
     Raises:
         HTTPException: If token is missing or invalid
     """
+    # Dev mode bypass: accept dev-user-local without token verification
+    if authorization and authorization == "Bearer dev-token-local":
+        print("🔧 Dev mode: Auth bypassed for local development")
+        dev_user_id = "00000000-0000-0000-0000-000000000001"
+        # Ensure dev user exists in database
+        db.ensure_dev_user_exists(dev_user_id)
+        return dev_user_id
+
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
 
@@ -148,10 +156,8 @@ class LessonSource(BaseModel):
 
 
 class LessonSources(BaseModel):
-    """Sources grounding for a lesson"""
+    """Sources grounding for a lesson - all sources combined"""
     sources: list[LessonSource] = []
-    industry_insight: Optional[str] = None
-    insight_source: Optional[str] = None  # URL backing the insight
     grounded: bool = False
 
 
@@ -735,13 +741,12 @@ def start_lesson(request: LessonStartRequest, user_id: str = Depends(get_current
 
         print(f"   ✅ Lesson started, phase: {response.get('lesson_status', {}).get('current_phase', 'UNKNOWN')}")
 
-        # Build sources response
+        # Build sources response - all sources combined
         sources_data = None
-        if grounding_result.get("grounded"):
+        grounding = engine.get_grounding_context()
+        if grounding.get("grounded"):
             sources_data = LessonSources(
-                sources=[LessonSource(**s) for s in grounding_result.get("sources", [])],
-                industry_insight=grounding_result.get("industry_insight"),
-                insight_source=grounding_result.get("insight_source"),
+                sources=[LessonSource(**s) for s in grounding.get("sources", [])],
                 grounded=True
             )
 

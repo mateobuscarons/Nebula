@@ -6,8 +6,19 @@ import { supabase } from '../lib/supabase';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+// Dev mode detection
+const IS_DEV = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
 // Get auth headers with current user token
 async function getAuthHeaders() {
+  // Dev mode: use dev token
+  if (IS_DEV) {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer dev-token-local'
+    };
+  }
+
   const { data: { session } } = await supabase.auth.getSession();
 
   if (!session) {
