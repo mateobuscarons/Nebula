@@ -147,17 +147,22 @@ class LessonRespondRequest(BaseModel):
     user_input: str
 
 
-class LessonSource(BaseModel):
-    """Single source reference"""
+class FurtherReading(BaseModel):
+    """Further reading resource"""
     title: str
     url: str
-    domain: str
-    description: Optional[str] = None  # Brief description of what this source covers
+
+
+class IndustryInsight(BaseModel):
+    """Industry insight proving concept value"""
+    text: str
+    url: Optional[str] = None
 
 
 class LessonSources(BaseModel):
-    """Sources grounding for a lesson - all sources combined"""
-    sources: list[LessonSource] = []
+    """Sources grounding for a lesson"""
+    insights: list[IndustryInsight] = []  # "Why This Matters" facts
+    further_reading: list[FurtherReading] = []  # Further reading resources
     grounded: bool = False
 
 
@@ -712,20 +717,31 @@ def start_lesson(request: LessonStartRequest, user_id: str = Depends(get_current
         # Mark challenge as in_progress
         db.update_challenge_status(user_id, module_num, challenge_num, "in_progress")
 
-        # Step 1: Ground the lesson (fetch sources BEFORE teaching)
+        # Step 1: Ground the lesson (insights + further reading in parallel)
         grounding_result = engine.ground_lesson()
 
-        # Log grounding token usage
-        db.log_token_usage(
-            user_id=user_id,
-            agent_name="lesson_grounding",
-            prompt_tokens=100,  # Approximate for grounding call
-            completion_tokens=200,
-            total_tokens=300,
-            model_name="gemini-2.5-flash"
-        )
+        # Log token usage for grounding and further reading
+        token_usage = grounding_result.get("token_usage", {})
+        if token_usage.get("grounding"):
+            db.log_token_usage(
+                user_id=user_id,
+                agent_name="lesson_grounding",
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=token_usage["grounding"].get("total_tokens", 0),
+                model_name="gemini-2.5-flash"
+            )
+        if token_usage.get("further_reading"):
+            db.log_token_usage(
+                user_id=user_id,
+                agent_name="further_reading",
+                prompt_tokens=0,
+                completion_tokens=0,
+                total_tokens=token_usage["further_reading"].get("total_tokens", 0),
+                model_name="gemini-2.5-flash"
+            )
 
-        # Step 2: Start the lesson (teaching content informed by grounding)
+        # Step 2: Start the lesson
         response = engine.start_lesson()
 
         # Log teaching token usage
@@ -741,12 +757,25 @@ def start_lesson(request: LessonStartRequest, user_id: str = Depends(get_current
 
         print(f"   ✅ Lesson started, phase: {response.get('lesson_status', {}).get('current_phase', 'UNKNOWN')}")
 
-        # Build sources response - all sources combined
+        # Build sources response
         sources_data = None
         grounding = engine.get_grounding_context()
         if grounding.get("grounded"):
+            # Build insights list
+            insights_list = [
+                IndustryInsight(text=i["text"], url=i.get("url"))
+                for i in grounding.get("insights", []) if i.get("text")
+            ]
+
+            # Build further reading list
+            reading_list = [
+                FurtherReading(title=r["title"], url=r["url"])
+                for r in grounding.get("further_reading", []) if r.get("url")
+            ]
+
             sources_data = LessonSources(
-                sources=[LessonSource(**s) for s in grounding.get("sources", [])],
+                insights=insights_list,
+                further_reading=reading_list,
                 grounded=True
             )
 

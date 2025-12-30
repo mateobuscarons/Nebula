@@ -598,7 +598,7 @@ function LessonPage({ onComplete }) {
 
       {/* Main content - lesson fills space up to sources */}
       <div style={{
-        marginRight: sources?.grounded && (sources.sources?.length > 0 || sources.insight_source) ? '340px' : '60px',
+        marginRight: sources?.grounded && (sources.further_reading?.length > 0 || sources.insights?.length > 0) ? '340px' : '60px',
         marginLeft: '160px',
         padding: '100px 0 40px',
         position: 'relative',
@@ -858,136 +858,186 @@ function LessonPage({ onComplete }) {
         )}
         </div>
 
-        {/* Right: Sources Sidebar - Unified sources block */}
-        {sources?.grounded && (sources.sources?.length > 0 || sources.insight_source) && (
+        {/* Right: Sources Sidebar */}
+        {sources?.grounded && (sources.further_reading?.length > 0 || sources.insights?.length > 0) && (
           <div style={{
             position: 'fixed',
             right: '24px',
             top: '100px',
+            bottom: '24px',
             width: '300px',
-            zIndex: 40
+            zIndex: 40,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+            overflowY: 'auto',
+            paddingRight: '4px',
           }}>
-            <div style={{
-              borderRadius: '12px',
-              background: 'rgba(10,10,18,0.95)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              overflow: 'hidden',
-              padding: '16px'
-            }}>
+            {/* Why This Matters - Industry Insights */}
+            {sources.insights?.length > 0 && (
               <div style={{
-                fontSize: '11px',
-                fontWeight: 600,
-                color: 'rgba(255,255,255,0.5)',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                marginBottom: '12px'
+                borderRadius: '16px',
+                background: 'linear-gradient(145deg, rgba(139,92,246,0.08) 0%, rgba(79,70,229,0.04) 100%)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(139,92,246,0.15)',
+                padding: '16px',
+                position: 'relative',
+                flexShrink: 0,
               }}>
-                Sources
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {/* Insight source first (if exists, has domain, and not already in resources) */}
-                {sources.insight_source && sources.insight_domain &&
-                 !sources.sources?.some(s => s.domain === sources.insight_domain) && (
-                  <a
-                    href={sources.insight_source}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '10px',
-                      padding: '12px',
-                      borderRadius: '8px',
-                      background: 'rgba(255,255,255,0.03)',
-                      textDecoration: 'none',
-                      transition: 'background 0.2s'
-                    }}
-                    onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-                    onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
-                  >
-                    <svg style={{ width: '12px', height: '12px', color: 'rgba(255,255,255,0.4)', flexShrink: 0, marginTop: '2px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Subtle glow accent */}
+                <div style={{
+                  position: 'absolute',
+                  top: '-20px',
+                  right: '-20px',
+                  width: '80px',
+                  height: '80px',
+                  background: 'radial-gradient(circle, rgba(139,92,246,0.2) 0%, transparent 70%)',
+                  pointerEvents: 'none',
+                }} />
+
+                <div style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  background: 'linear-gradient(135deg, #c4b5fd 0%, #a78bfa 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  position: 'relative',
+                }}>
+                  <svg style={{ width: '12px', height: '12px', color: '#c4b5fd' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Why This Matters
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {sources.insights.map((insight, idx) => (
+                    <div
+                      key={idx}
+                      className="insight-card"
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        background: 'rgba(255,255,255,0.02)',
+                        border: '1px solid rgba(255,255,255,0.04)',
+                        position: 'relative',
+                        transition: 'all 0.3s ease',
+                        cursor: insight.url ? 'pointer' : 'default',
+                      }}
+                      onClick={() => insight.url && window.open(insight.url, '_blank')}
+                    >
+                      {/* Quote accent line */}
+                      <div style={{
+                        position: 'absolute',
+                        left: '0',
+                        top: '8px',
+                        bottom: '8px',
+                        width: '2px',
+                        background: 'linear-gradient(180deg, #8b5cf6 0%, #6366f1 100%)',
+                        borderRadius: '2px',
+                        opacity: 0.6,
+                      }} />
+
                       <div style={{
                         fontSize: '12px',
-                        fontWeight: 500,
-                        color: 'rgba(255,255,255,0.75)',
-                        marginBottom: '4px'
+                        color: 'rgba(255,255,255,0.85)',
+                        lineHeight: 1.5,
+                        paddingLeft: '10px',
+                        fontStyle: 'italic',
                       }}>
-                        {sources.insight_domain}
+                        "{insight.text}"
                       </div>
-                      {sources.insight_description && (
-                        <div style={{
-                          fontSize: '11px',
-                          color: 'rgba(255,255,255,0.45)',
-                          lineHeight: 1.4,
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden'
-                        }}>
-                          {sources.insight_description}
-                        </div>
-                      )}
                     </div>
-                  </a>
-                )}
+                  ))}
+                </div>
+              </div>
+            )}
 
-                {/* Other sources */}
-                {sources.sources?.map((source, idx) => (
+            {/* Further Reading */}
+            {sources.further_reading?.length > 0 && (
+              <div style={{
+                borderRadius: '16px',
+                background: 'linear-gradient(145deg, rgba(15,15,25,0.9) 0%, rgba(10,10,18,0.95) 100%)',
+                backdropFilter: 'blur(12px)',
+                border: '1px solid rgba(255,255,255,0.05)',
+                padding: '16px',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
+              }}>
+                <div style={{
+                  fontSize: '10px',
+                  fontWeight: 700,
+                  color: 'rgba(255,255,255,0.5)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}>
+                  <svg style={{ width: '12px', height: '12px', color: 'rgba(255,255,255,0.5)' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                  </svg>
+                  Further Reading
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {sources.further_reading.map((source, idx) => (
                     <a
                       key={idx}
                       href={source.url}
                       target="_blank"
                       rel="noopener noreferrer"
+                      className="reading-link"
                       style={{
                         display: 'flex',
-                        alignItems: 'flex-start',
+                        alignItems: 'center',
                         gap: '10px',
-                        padding: '12px',
+                        padding: '10px',
                         borderRadius: '8px',
-                        background: 'rgba(255,255,255,0.03)',
+                        background: 'rgba(255,255,255,0.02)',
+                        border: '1px solid rgba(255,255,255,0.04)',
                         textDecoration: 'none',
-                        transition: 'background 0.2s'
+                        transition: 'all 0.2s ease',
                       }}
-                      onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-                      onMouseOut={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
                     >
-                        <svg style={{ width: '12px', height: '12px', color: 'rgba(255,255,255,0.4)', flexShrink: 0, marginTop: '2px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{
-                            fontSize: '12px',
-                            fontWeight: 500,
-                            color: 'rgba(255,255,255,0.75)',
-                            marginBottom: '4px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }}>
-                            {source.domain}
-                          </div>
-                          {source.description && (
-                            <div style={{
-                              fontSize: '11px',
-                              color: 'rgba(255,255,255,0.45)',
-                              lineHeight: 1.4,
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden'
-                            }}>
-                              {source.description}
-                            </div>
-                          )}
-                        </div>
-                      </a>
-                ))}
+                      {/* Number badge */}
+                      <div style={{
+                        width: '20px',
+                        height: '20px',
+                        borderRadius: '5px',
+                        background: 'linear-gradient(135deg, rgba(139,92,246,0.15) 0%, rgba(99,102,241,0.1) 100%)',
+                        border: '1px solid rgba(139,92,246,0.2)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        color: '#a78bfa',
+                        flexShrink: 0,
+                      }}>
+                        {idx + 1}
+                      </div>
 
+                      <div style={{
+                        fontSize: '12px',
+                        fontWeight: 500,
+                        color: 'rgba(255,255,255,0.8)',
+                        lineHeight: 1.4,
+                        flex: 1,
+                      }}>
+                        {source.title}
+                      </div>
+                    </a>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
@@ -1006,6 +1056,18 @@ function LessonPage({ onComplete }) {
         }
         textarea::placeholder {
           color: rgba(255,255,255,0.3);
+        }
+
+        /* Insight card hover */
+        .insight-card:hover {
+          background: rgba(139,92,246,0.08) !important;
+          border-color: rgba(139,92,246,0.15) !important;
+        }
+
+        /* Reading link hover */
+        .reading-link:hover {
+          background: rgba(139,92,246,0.1) !important;
+          border-color: rgba(139,92,246,0.2) !important;
         }
       `}</style>
     </div>
